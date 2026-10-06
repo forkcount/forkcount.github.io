@@ -1,15 +1,17 @@
 import {
   doc,
   getDoc,
-  setDoc,
-  updateDoc,
-  deleteDoc,
   getDocs,
   collection,
   query,
   where,
   onSnapshot
 } from 'firebase/firestore';
+import {
+  setDoc,
+  updateDoc,
+  deleteDoc
+} from './safeFirestore.js';
 import { db, auth, handleFirestoreError, OperationType } from '../firebase.js';
 import type {
   FoodItem,
