@@ -101,6 +101,18 @@ service cloud.firestore {
       allow write: if true;
     }
 
+    // Reports Collection
+    match /reports/{reportId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    // Security Events Collection
+    match /securityEvents/{eventId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
     match /socialFriends/{friendId} {
       allow read: if true;
       allow write: if true;

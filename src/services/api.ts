@@ -1725,9 +1725,13 @@ class ApiService {
       status: 'pending'
     };
 
+    console.log('REPORT CLICKED:', { postId, reportedBy: userId, reason: reason || 'Inappropriate content' });
+
     try {
       await setDoc(doc(db, 'reports', id), report);
+      console.log('REPORT SAVED:', id);
     } catch (err) {
+      console.log('REPORT FAILED:', err);
       console.error('Error writing report doc:', err);
     }
 
@@ -2014,6 +2018,7 @@ class ApiService {
         where('status', '==', 'pending')
       );
       const snap = await getDocs(q);
+      console.log('REPORTS QUERY RESULT:', snap.docs.length, snap.docs);
       const reports: any[] = [];
       snap.forEach((d) => {
         const data = d.data();

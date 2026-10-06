@@ -15,9 +15,10 @@ import {
   KeyRound,
   Copy,
   Check,
-  UserX
+  UserX,
+  Users
 } from 'lucide-react';
-import { doc, setDoc } from 'firebase/firestore';
+import { doc, setDoc, getDocs, collection } from 'firebase/firestore';
 import { db } from '../firebase.js';
 import { useApp } from '../context/AppContext.js';
 import { api } from '../services/api.js';
@@ -98,6 +99,54 @@ export const DevToolsSheet: React.FC<DevToolsSheetProps> = ({
   const [isDeletingUser, setIsDeletingUser] = useState(false);
   const [deleteUserStatus, setDeleteUserStatus] = useState<string | null>(null);
 
+  // 7. Users List state
+  const [usersList, setUsersList] = useState<any[]>([]);
+  const [userSearchQuery, setUserSearchQuery] = useState('');
+  const [userPage, setUserPage] = useState(0);
+  const [isLoadingUsers, setIsLoadingUsers] = useState(false);
+
+  const loadUsersList = useCallback(async () => {
+    setIsLoadingUsers(true);
+    try {
+      const snap = await getDocs(collection(db, 'users'));
+      const list: any[] = [];
+      snap.forEach((d) => {
+        const data = d.data();
+        list.push({
+          id: d.id,
+          username: data.username || data.profile?.username || 'Guest',
+          isDev: Boolean(data.isDev || data.profile?.isDev),
+          createdAt: data.createdAt || 0,
+          updatedAt: data.updatedAt || 0,
+          ...data
+        });
+      });
+      // Sort by createdAt, newest first
+      list.sort((a, b) => b.createdAt - a.createdAt);
+      setUsersList(list);
+    } catch (err) {
+      console.error('Error loading users list:', err);
+    } finally {
+      setIsLoadingUsers(false);
+    }
+  }, []);
+
+  const handleQuickInspect = async (username: string) => {
+    setInspectEmailInput(username);
+    setIsInspecting(true);
+    setInspectMessage(null);
+    setInspectedAccount(null);
+    try {
+      const res = await api.devInspectAccount(username);
+      setInspectedAccount(res);
+      setInspectMessage(`Successfully loaded inspection for @${username}`);
+    } catch (err: any) {
+      setInspectMessage(err?.message || 'Could not inspect account.');
+    } finally {
+      setIsInspecting(false);
+    }
+  };
+
   const loadReportedPosts = useCallback(async () => {
     setIsLoadingReports(true);
     try {
@@ -134,8 +183,9 @@ export const DevToolsSheet: React.FC<DevToolsSheetProps> = ({
     if (isOpen) {
       loadReportedPosts();
       loadDiagnostics();
+      loadUsersList();
     }
-  }, [isOpen, loadReportedPosts, loadDiagnostics]);
+  }, [isOpen, loadReportedPosts, loadDiagnostics, loadUsersList]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -524,6 +574,160 @@ export const DevToolsSheet: React.FC<DevToolsSheetProps> = ({
                   </div>
                 ))}
               </div>
+            )}
+          </div>
+
+          {/* USER LIST SECTION */}
+          <div className="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-4 shadow-xl space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Users className="w-4 h-4 text-teal-400" />
+                <div>
+                  <h3 className="text-xs font-bold text-zinc-100">User List</h3>
+                  <span className="text-[10px] text-zinc-400 block">
+                    All registered user accounts sorted by registration date
+                  </span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={loadUsersList}
+                disabled={isLoadingUsers}
+                className="p-1.5 bg-zinc-950 hover:bg-zinc-800 border border-zinc-800 rounded-xl text-teal-400 transition-colors"
+                title="Refresh user list"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isLoadingUsers ? 'animate-spin' : ''}`} />
+              </button>
+            </div>
+
+            {/* Search Box */}
+            <div className="relative">
+              <Search className="absolute left-2.5 top-2.5 w-3.5 h-3.5 text-zinc-500" />
+              <input
+                type="text"
+                value={userSearchQuery}
+                onChange={(e) => {
+                  setUserSearchQuery(e.target.value);
+                  setUserPage(0); // reset page on search
+                }}
+                placeholder="Search by username or user ID..."
+                className="w-full bg-zinc-950 border border-zinc-800 rounded-xl pl-8 pr-3 py-2 text-xs text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-teal-500"
+              />
+            </div>
+
+            {isLoadingUsers ? (
+              <div className="py-8 text-center text-xs text-zinc-400">Loading user accounts...</div>
+            ) : (
+              (() => {
+                // Filter the list
+                const filtered = usersList.filter((u) => {
+                  const q = userSearchQuery.toLowerCase();
+                  return (
+                    (u.username || '').toLowerCase().includes(q) ||
+                    (u.id || '').toLowerCase().includes(q)
+                  );
+                });
+
+                const itemsPerPage = 10;
+                const totalPages = Math.ceil(filtered.length / itemsPerPage);
+                const startIndex = userPage * itemsPerPage;
+                const paginated = filtered.slice(startIndex, startIndex + itemsPerPage);
+
+                return (
+                  <div className="space-y-3">
+                    <div className="overflow-x-auto rounded-xl border border-zinc-800 bg-zinc-950">
+                      <table className="w-full text-left border-collapse min-w-[500px]">
+                        <thead>
+                          <tr className="border-b border-zinc-800 text-[10px] uppercase font-bold text-zinc-400 tracking-wider">
+                            <th className="py-2.5 px-3">Username</th>
+                            <th className="py-2.5 px-3">User ID</th>
+                            <th className="py-2.5 px-3">isDev</th>
+                            <th className="py-2.5 px-3">Created</th>
+                            <th className="py-2.5 px-3">Last Login</th>
+                            <th className="py-2.5 px-3 text-right">Action</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-zinc-800/60 text-xs">
+                          {paginated.length === 0 ? (
+                            <tr>
+                              <td colSpan={6} className="py-6 text-center text-[11px] text-zinc-500">
+                                No user accounts match your search.
+                              </td>
+                            </tr>
+                          ) : (
+                            paginated.map((u) => (
+                              <tr key={u.id} className="hover:bg-zinc-900/40 text-zinc-300">
+                                <td className="py-2 px-3 font-semibold text-zinc-100">
+                                  @{u.username}
+                                </td>
+                                <td className="py-2 px-3 font-mono text-[10px] text-zinc-400">
+                                  {u.id}
+                                </td>
+                                <td className="py-2 px-3">
+                                  {u.isDev ? (
+                                    <span className="text-[10px] font-bold text-teal-400 px-1.5 py-0.5 rounded bg-teal-500/10 border border-teal-500/20">
+                                      true
+                                    </span>
+                                  ) : (
+                                    <span className="text-[10px] text-zinc-500 px-1.5 py-0.5 rounded bg-zinc-800/40 border border-zinc-800/50">
+                                      false
+                                    </span>
+                                  )}
+                                </td>
+                                <td className="py-2 px-3 text-[10px] text-zinc-400">
+                                  {formatSafeTimestamp(u.createdAt)}
+                                </td>
+                                <td className="py-2 px-3 text-[10px] text-zinc-400">
+                                  {formatSafeTimestamp(u.updatedAt || u.createdAt)}
+                                </td>
+                                <td className="py-2 px-3 text-right">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleQuickInspect(u.username)}
+                                    className="px-2 py-1 bg-teal-500/10 hover:bg-teal-500 hover:text-zinc-950 border border-teal-500/20 text-teal-400 rounded-lg text-[10px] font-bold transition-all"
+                                  >
+                                    Inspect
+                                  </button>
+                                </td>
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    {/* Pagination Controls */}
+                    {totalPages > 1 && (
+                      <div className="flex items-center justify-between text-[11px] pt-1">
+                        <span className="text-zinc-400 font-medium">
+                          Showing {startIndex + 1}–{Math.min(startIndex + itemsPerPage, filtered.length)} of {filtered.length} users
+                        </span>
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            disabled={userPage === 0}
+                            onClick={() => setUserPage((p) => p - 1)}
+                            className="px-2 py-1 bg-zinc-950 hover:bg-zinc-800 border border-zinc-800 disabled:opacity-40 text-zinc-300 rounded-lg transition-colors"
+                          >
+                            Prev
+                          </button>
+                          <span className="px-2.5 text-zinc-300 font-mono">
+                            Page {userPage + 1} of {totalPages}
+                          </span>
+                          <button
+                            type="button"
+                            disabled={userPage >= totalPages - 1}
+                            onClick={() => setUserPage((p) => p + 1)}
+                            className="px-2 py-1 bg-zinc-950 hover:bg-zinc-800 border border-zinc-800 disabled:opacity-40 text-zinc-300 rounded-lg transition-colors"
+                          >
+                            Next
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()
             )}
           </div>
 
