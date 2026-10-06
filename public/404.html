@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Calory</title>
+  <script>
+    (function () {
+      var target = location.pathname + location.search + location.hash;
+      if (typeof target === 'string' && target.startsWith('/') && !target.startsWith('//') && !target.startsWith('/\\')) {
+        sessionStorage.setItem('redirect', target);
+      }
+      window.location.replace('/');
+    })();
+  </script>
+</head>
+<body></body>
+</html>

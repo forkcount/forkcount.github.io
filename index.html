@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <script>
+      (function () {
+        var redirect = sessionStorage.getItem('redirect');
+        if (redirect) {
+          sessionStorage.removeItem('redirect');
+          var trimmed = String(redirect).trim();
+          if (trimmed.startsWith('/') && !trimmed.startsWith('//') && !trimmed.startsWith('/\\')) {
+            try {
+              var dummy = 'https://caloriq.internal';
+              var parsed = new URL(trimmed, dummy);
+              if (parsed.origin === dummy) {
+                var safePath = parsed.pathname + parsed.search + parsed.hash;
+                if (safePath.startsWith('/') && !safePath.startsWith('//') && !safePath.startsWith('/\\')) {
+                  window.history.replaceState(null, '', safePath);
+                }
+              }
+            } catch (e) {}
+          }
+        }
+      })();
+    </script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <script>
+      (function () {
+        if ('caches' in window) {
+          caches.keys().then(function (keys) {
+            keys.forEach(function (k) {
+              caches.delete(k);
+            });
+          }).catch(function () {});
+        }
+        if ('serviceWorker' in navigator) {
+          navigator.serviceWorker.getRegistrations().then(function (regs) {
+            regs.forEach(function (reg) {
+              reg.unregister().catch(function () {});
+            });
+          }).catch(function () {});
+        }
+      })();
+    </script>
+    <title>Calory — Free Calorie &amp; Macro Tracker</title>
+    <meta name="description" content="Track your calories, macros, water, and exercise for free. Built on your own body's numbers." />
+    <meta name="theme-color" content="#09090b" />
+
+    <!-- Preload main font with font-display: swap -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" />
+
+    <!-- Favicons in 3 sizes: 16x16, 32x32, and 180x180 (apple-touch-icon) -->
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
+    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/manifest.json" />
+
+    <!-- iOS PWA status-bar meta tags -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Calory" />
+
+    <!-- OpenGraph / Social Share Preview (og-image.png 1200x630) -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Calory" />
+    <meta property="og:title" content="Calory — Free Calorie &amp; Macro Tracker" />
+    <meta property="og:description" content="Track your calories, macros, water, and exercise for free. Built on your own body's numbers." />
+    <meta property="og:image" content="/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Calory calorie and macro tracking app interface" />
+
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Calory — Free Calorie &amp; Macro Tracker" />
+    <meta name="twitter:description" content="Track your calories, macros, water, and exercise for free. Built on your own body's numbers." />
+    <meta name="twitter:image" content="/og-image.png" />
+
+    <!-- Schema.org JSON-LD -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "WebApplication",
+        "name": "Calory",
+        "description": "Free calorie, macro, water, and exercise tracking calculated from your own body.",
+        "applicationCategory": "HealthApplication",
+        "operatingSystem": "Web, iOS, Android",
+        "offers": {
+          "@type": "Offer",
+          "price": "0",
+          "priceCurrency": "USD"
+        }
+      }
+    </script>
+  </head>
+  <body class="bg-zinc-950 text-zinc-100 antialiased">
+    <div id="root">
+      <!-- Item 89 & 96: Loading screen with the Calory logo (not a blank page) + "Loading..." if >2s -->
+      <div
+        id="caloriq-boot-loader"
+        role="status"
+        aria-live="polite"
+        style="min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#09090b;color:#f4f4f5;font-family:Inter,system-ui,sans-serif;gap:14px;"
+      >
+        <div style="width:52px;height:52px;border-radius:16px;background:rgba(20,184,166,0.12);border:1px solid rgba(20,184,166,0.35);display:flex;align-items:center;justify-content:center;color:#2dd4bf;font-weight:700;font-size:22px;">
+          C
+        </div>
+        <div style="font-size:16px;font-weight:600;letter-spacing:-0.01em;color:#f4f4f5;">Calory</div>
+        <div id="caloriq-slow-load-msg" style="font-size:12px;color:#a1a1aa;opacity:0;transition:opacity 0.2s ease;">
+          Loading...
+        </div>
+      </div>
+    </div>
+    <script>
+      setTimeout(function () {
+        var el = document.getElementById('caloriq-slow-load-msg');
+        if (el) el.style.opacity = '1';
+      }, 2000);
+    </script>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

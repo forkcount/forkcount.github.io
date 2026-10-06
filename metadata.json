@@ -1,0 +1,6 @@
+{
+  "name": "Calory",
+  "description": "Mobile-first calorie and meal tracker with cross-device sync, smart recipe parsing, and macro tracking.",
+  "requestFramePermissions": ["camera", "microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
