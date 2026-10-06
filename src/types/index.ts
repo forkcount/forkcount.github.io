@@ -19,6 +19,8 @@ export interface FoodItem {
   caffeineMg?: number; // mg
   standardDrinks?: number; // standard alcoholic drinks
   serving?: string;
+  servingSize?: number;
+  servingUnit?: string;
   note?: string;
   unusualQuantity?: boolean;
   loggedHour?: number; // 0-23
@@ -129,26 +131,29 @@ export interface PantryItem {
 
 export interface FriendRecord {
   id: string;
-  userId: string;
+  userId?: string;
   username: string;
-  displayName: string;
-  streakDays: number;
-  daysOnTargetThisWeek: number;
-  waterDaysCompleted: number;
+  displayName?: string;
+  streakDays?: number;
+  daysOnTargetThisWeek?: number;
+  waterDaysCompleted?: number;
   isPartner?: boolean;
-  createdAt: number;
+  createdAt?: number;
+  addedAt?: number;
 }
 
 export interface SharedRecipeRecord {
   id: string;
   userId: string;
   toUsername: string;
+  fromUsername?: string;
   recipeName: string;
   calories: number;
   protein: number;
   carbs: number;
   fat: number;
   createdAt: number;
+  recipeId?: string;
 }
 
 export interface SavedFood {
@@ -274,11 +279,18 @@ export interface Badge {
 }
 
 export interface UserStats {
-  xp: number;
-  level: number;
-  badges: string[];
+  xp?: number;
+  level?: number;
+  badges?: string[];
   foodStreak?: number;
   workoutStreak?: number;
+  currentStreak?: number;
+  longestStreak?: number;
+  mealsLoggedTotal?: number;
+  uniqueFoodsCount?: number;
+  weightLossKg?: number;
+  consistencyScore?: number;
+  averageDailyCalories?: number;
 }
 
 export interface PlanDayMeal {
@@ -314,12 +326,16 @@ export interface PlanDay {
 }
 
 export interface WeekPlan {
-  userId: string;
+  userId?: string;
+  weekStartDate?: string;
+  targetCalories?: number;
+  macroTarget?: MacroTarget;
+  weeklyStrategy?: string;
   createdAt?: number;
   generatedAt: number;
-  type: 'meals' | 'workouts' | 'both';
+  type?: 'meals' | 'workouts' | 'both';
   days: PlanDay[];
-  preferences: {
+  preferences?: {
     restrictions: string[];
     allergies: string[];
     dislikes: string;
@@ -344,11 +360,13 @@ export interface CommunityPost {
   id: string;
   userId: string;
   username: string;
-  text: string;
+  text?: string;
+  content?: string;
   imageUrl?: string;
   createdAt: number;
-  likeCount: number;
-  replyCount: number;
+  likeCount?: number;
+  likesCount?: number;
+  replyCount?: number;
   likedByMe?: boolean;
   isFollowingAuthor?: boolean;
 }
@@ -358,7 +376,8 @@ export interface CommunityReply {
   postId: string;
   userId: string;
   username: string;
-  text: string;
+  text?: string;
+  content?: string;
   createdAt: number;
 }
 
@@ -366,7 +385,7 @@ export interface ReportedPostRecord {
   id: string;
   postId: string;
   reportedByUserId: string;
-  reportedByUsername: string;
+  reportedByUsername?: string;
   reason?: string;
   createdAt: number;
   post?: CommunityPost;

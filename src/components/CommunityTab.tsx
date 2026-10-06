@@ -186,7 +186,7 @@ export const CommunityTab: React.FC = () => {
   const handleToggleLike = async (post: CommunityPost, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
     const optimisticLiked = !post.likedByMe;
-    const optimisticCount = Math.max(0, post.likeCount + (optimisticLiked ? 1 : -1));
+    const optimisticCount = Math.max(0, (post.likeCount || post.likesCount || 0) + (optimisticLiked ? 1 : -1));
 
     setPosts((prev) =>
       prev.map((p) =>
@@ -237,11 +237,11 @@ export const CommunityTab: React.FC = () => {
       }
       setReplyText('');
       setActivePost((prev) =>
-        prev ? { ...prev, replyCount: prev.replyCount + 1 } : prev
+        prev ? { ...prev, replyCount: (prev.replyCount || 0) + 1 } : prev
       );
       setPosts((prev) =>
         prev.map((p) =>
-          p.id === activePost.id ? { ...p, replyCount: p.replyCount + 1 } : p
+          p.id === activePost.id ? { ...p, replyCount: (p.replyCount || 0) + 1 } : p
         )
       );
     } catch (err: any) {

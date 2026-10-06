@@ -1,4 +1,4 @@
-import { chromium, expect } from 'playwright';
+import { chromium } from 'playwright';
 
 interface ReportRow {
   route: string;

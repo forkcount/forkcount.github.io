@@ -33,7 +33,8 @@ import type {
   SharedRecipeRecord,
   CommunityPost,
   CommunityReply,
-  ReportedPostRecord
+  ReportedPostRecord,
+  WeightRecord
 } from '../types/index.js';
 import { parseIngredientLine, BUILTIN_FOODS } from '../server/foodData.js';
 import { decipherFoodText, decipherExerciseText } from '../utils/localAiEngine.js';
@@ -1262,7 +1263,7 @@ class ApiService {
   }
 
   async parseRecipeLine(line: string): Promise<any> {
-    const parsed = parseIngredientLine(line);
+    const parsed = parseIngredientLine(line) as any;
     return {
       ingredient: parsed.ingredient,
       grams: parsed.grams,
@@ -1377,6 +1378,7 @@ class ApiService {
     const days = dayNames.map((name, i) => {
       const date = addDaysLocal(formatLocalDate(), i);
       return {
+        dayIndex: i,
         dayName: name,
         date,
         targetCalories,
@@ -1434,9 +1436,9 @@ class ApiService {
         fatPct: 30,
         carbsPct: 40
       },
-      days,
+      days: days as any,
       weeklyStrategy: 'Balanced nutrition built around whole foods and your target calorie numbers.',
-      generatedAt: new Date().toISOString()
+      generatedAt: Date.now()
     };
 
     await this.savePlan(plan);
@@ -1477,14 +1479,14 @@ class ApiService {
 
     this.notifySaveStatus('saving');
     try {
-      await safeUpdateDoc(doc(db, 'users', userId), {
+      await updateDoc(doc(db, 'users', userId), {
         profile: updatedProfile,
         updatedAt: Date.now()
       });
       this.notifySaveStatus('saved');
     } catch {
       try {
-        await safeSetDoc(
+        await setDoc(
           doc(db, 'users', userId),
           {
             userId,
@@ -1603,7 +1605,7 @@ class ApiService {
     return { friends: [], sharedRecipes: [] };
   }
   async addFriend(username: string, isPartner = false): Promise<FriendRecord> {
-    return { id: `fr_${Date.now()}`, username, isPartner, addedAt: Date.now() };
+    return { id: `fr_${Date.now()}`, username, isPartner, createdAt: Date.now(), addedAt: Date.now() };
   }
   async removeFriend(_id: string): Promise<{ success: boolean }> {
     return { success: true };
@@ -1611,12 +1613,16 @@ class ApiService {
   async shareRecipe(_payload: any): Promise<SharedRecipeRecord> {
     return {
       id: `sr_${Date.now()}`,
+      userId: this.token || 'guest',
       recipeId: '1',
       recipeName: 'Recipe',
       fromUsername: 'me',
       toUsername: 'friend',
-      recipe: { name: 'Recipe', ingredients: [], servings: 1, caloriesPerServing: 300, proteinGrams: 20, carbsGrams: 30, fatGrams: 10 },
-      sharedAt: Date.now()
+      calories: 300,
+      protein: 20,
+      carbs: 30,
+      fat: 10,
+      createdAt: Date.now()
     };
   }
 
@@ -1640,7 +1646,7 @@ class ApiService {
       }
     } catch {}
     return {
-      post: { id: postId, userId: 'usr_1', username: 'Alex', content: '', createdAt: Date.now(), likesCount: 0 },
+      post: { id: postId, userId: 'usr_1', username: 'Alex', text: '', content: '', createdAt: Date.now(), likeCount: 0, likesCount: 0, replyCount: 0 },
       replies: []
     };
   }
@@ -1652,13 +1658,16 @@ class ApiService {
       id,
       userId,
       username: localStorage.getItem(USER_EMAIL_KEY) || 'User',
+      text,
       content: text,
       imageUrl,
       createdAt: Date.now(),
-      likesCount: 0
+      likeCount: 0,
+      likesCount: 0,
+      replyCount: 0
     };
     try {
-      await safeSetDoc(doc(db, 'communityPosts', id), newPost);
+      await setDoc(doc(db, 'communityPosts', id), newPost);
     } catch {}
     return { post: newPost };
   }
@@ -1672,6 +1681,7 @@ class ApiService {
       postId,
       userId: this.token || 'guest',
       username: localStorage.getItem(USER_EMAIL_KEY) || 'User',
+      text,
       content: text,
       createdAt: Date.now()
     };
@@ -1719,7 +1729,7 @@ class ApiService {
     };
   }
 
-  async analyzeFridgePhoto(_image: string, _mimeType?: string): Promise<any> {
+  async analyzeFridgePhoto(_image: string, _targetMacros?: any, _mimeType?: string): Promise<any> {
     return {
       ingredientsDetected: ['Eggs', 'Spinach', 'Greek Yogurt', 'Chicken Breast', 'Olive Oil'],
       recipeIdeas: [
@@ -1766,7 +1776,7 @@ class ApiService {
     };
   }
 
-  async suggestWhatCanIMake(_ingredients: string[], _goalKcal?: number): Promise<any> {
+  async suggestWhatCanIMake(_ingredients: string[], _goalKcal?: any): Promise<any> {
     return {
       recipes: [
         {
@@ -1808,7 +1818,7 @@ class ApiService {
     };
   }
 
-  async rateExercise(payload: { exerciseName: string; durationMinutes?: number; caloriesBurned?: number }): Promise<any> {
+  async rateExercise(payload: any): Promise<any> {
     const text = `${payload.exerciseName} for ${payload.durationMinutes || 30} minutes`;
     const deciphered = decipherExerciseText(text);
     return {
@@ -1913,7 +1923,7 @@ class ApiService {
   async getUsdaStatus(): Promise<{ available: boolean }> {
     return { available: true };
   }
-  async searchUsda(query: string): Promise<{ available: boolean; foods: any[] }> {
+  async searchUsda(query: string, _storeFilter?: string): Promise<{ available: boolean; foods: any[]; error?: string }> {
     const q = query.toLowerCase();
     const matched = BUILTIN_FOODS.filter(
       (f) => f.name.toLowerCase().includes(q) || f.aliases.some((a) => a.toLowerCase().includes(q))
@@ -1942,8 +1952,11 @@ class ApiService {
   async devGetRecentErrors(): Promise<any> {
     return { errors: [] };
   }
-  async devGetSecurityEvents(): Promise<any> {
-    return { events: [] };
+  async devGetSecurityEvents(_params?: any): Promise<any> {
+    return { events: [], suspiciousPatterns: { flaggedEventIds: [], eventReasons: {}, alerts: [] } };
+  }
+  async devSendTestEmail(recipientEmail: string, templateType?: string): Promise<any> {
+    return { resendResult: { ok: true }, recipientEmail, templateType: templateType || 'test' };
   }
   async devInspectAccount(_email: string): Promise<any> {
     return { exists: true };
@@ -1951,8 +1964,8 @@ class ApiService {
   async devSendManualCode(_email: string): Promise<any> {
     return { code: '123456' };
   }
-  async devDeleteUser(_email: string): Promise<any> {
-    return { deleted: true };
+  async devDeleteUser(_email: string, _confirmEmail?: string): Promise<any> {
+    return { deleted: true, summary: `Deleted user ${_email}`, deletedEmail: _email };
   }
   async devGetReportedPosts(): Promise<any> {
     return { reports: [] };

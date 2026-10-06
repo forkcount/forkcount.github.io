@@ -918,10 +918,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setIsDev(Boolean(session.isDev || session.profile?.isDev));
     setIsGuestLockOpen(false);
     if (session.profile) {
+      const prof = session.profile;
       setProfile(prev =>
-        prev.signupComplete && !session.profile.signupComplete
-          ? { ...session.profile, ...prev, signupComplete: true, isDev: Boolean(session.isDev || session.profile?.isDev) }
-          : { ...prev, ...session.profile, isDev: Boolean(session.isDev || session.profile?.isDev) }
+        prev.signupComplete && !prof.signupComplete
+          ? { ...prof, ...prev, signupComplete: true, isDev: Boolean(session.isDev || prof.isDev) }
+          : { ...prev, ...prof, isDev: Boolean(session.isDev || prof.isDev) }
       );
     }
     if (session.stats) setStats(session.stats);

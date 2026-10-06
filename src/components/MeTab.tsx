@@ -199,18 +199,18 @@ export const MeTab: React.FC<MeTabProps> = ({
   })();
 
   const safeProfile: UserProfile = {
-    name: '',
-    username: '',
-    age: 0,
-    gender: '',
-    heightCm: 0,
-    fitnessLevel: '',
-    currentWeightKg: 0,
-    goalWeightKg: 0,
-    dailyActivity: '',
-    goalSpeed: '',
-    unitSystem: 'metric',
-    ...(profile || {})
+    ...(profile || {}),
+    name: profile?.name || '',
+    username: profile?.username || '',
+    age: profile?.age || 0,
+    gender: profile?.gender || '',
+    heightCm: profile?.heightCm || 0,
+    fitnessLevel: profile?.fitnessLevel || '',
+    currentWeightKg: profile?.currentWeightKg || 0,
+    goalWeightKg: profile?.goalWeightKg || 0,
+    dailyActivity: profile?.dailyActivity || '',
+    goalSpeed: profile?.goalSpeed || '',
+    unitSystem: profile?.unitSystem || 'metric'
   };
 
   // Form State
@@ -1773,7 +1773,7 @@ export const MeTab: React.FC<MeTabProps> = ({
                     try {
                       const res = await api.changeUsername(usernameChangeCurrentPwd, usernameChangeNewUsername);
                       await updateUserProfile({ username: res.username });
-                      setUsernameChangeStatus(res.message);
+                      setUsernameChangeStatus((res as any).message || 'Username updated successfully.');
                       setUsernameChangeCurrentPwd('');
                       setUsernameChangeNewUsername('');
                     } catch (err: any) {
@@ -1846,7 +1846,7 @@ export const MeTab: React.FC<MeTabProps> = ({
                 <button
                   type="button"
                   onClick={async () => {
-                    await api.revokeAllSessions(true);
+                    await api.revokeAllSessions();
                     const res = await api.getSessions();
                     setSessionsList(res.sessions || []);
                   }}

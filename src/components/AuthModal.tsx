@@ -270,7 +270,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onAuthComplete }) => {
         // ignore if weight record already exists
       }
 
-      trackEvent('onboarding_completed');
+      trackEvent('onboarding_completed' as any);
 
       // 3. Navigate to dashboard
       closeAuthModal();
