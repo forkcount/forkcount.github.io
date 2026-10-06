@@ -69,19 +69,16 @@ export const PrivacyPolicyPage: React.FC<PrivacyPolicyPageProps> = ({
           </section>
 
           <section className="space-y-2">
-            <h2 className="text-base font-bold text-zinc-100">3. Where It Is Stored &amp; Sub-Processors</h2>
+            <h2 className="text-base font-bold text-zinc-100">3. Cookies &amp; Local Storage Policy</h2>
             <p>
-              To operate ForkCount reliably, we use the following sub-processors (#51):
+              ForkCount does not use third-party advertising cookies or cross-site tracking cookies. Instead of tracking cookies, ForkCount uses your browser&apos;s standard <code className="text-teal-300 font-mono text-xs">localStorage</code> and <code className="text-teal-300 font-mono text-xs">sessionStorage</code> so the app works reliably and offline:
             </p>
             <ul className="list-disc pl-5 space-y-1 text-zinc-300">
-              <li><strong>Firebase (Google Cloud)</strong> — Primary database and authentication storage for signed-in accounts.</li>
-              <li><strong>Google Gemini API</strong> — Processes text descriptions and meal photos when you use the AI food estimator. AI estimates are approximate and not medical or nutritional advice (#49).</li>
-              <li><strong>Resend</strong> — Sends transactional account verification codes, password reset links, and support emails.</li>
-              <li><strong>Cloudflare</strong> — DNS, TLS encryption, and edge protection.</li>
+              <li><strong>forkcount_session_token</strong>: Keeps you signed in across page reloads (Strictly Necessary).</li>
+              <li><strong>forkcount_standalone_db_*</strong>: Caches your diary, water, and exercise entries so the app works offline (Strictly Necessary).</li>
+              <li><strong>forkcount_locale</strong>: Remembers your chosen language (Functional).</li>
+              <li><strong>forkcount_cookie_consent</strong>: Remembers whether you accepted or declined optional analytics (Compliance).</li>
             </ul>
-            <p>
-              If you use Guest mode, your entries stay in your browser&apos;s local storage on your device for 24 hours.
-            </p>
           </section>
 
           <section className="space-y-2">

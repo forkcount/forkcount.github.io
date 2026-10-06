@@ -857,19 +857,6 @@ export function DescriptionPage({
               </a>
               <span>·</span>
               <a
-                href="/cookies"
-                onClick={(e) => {
-                  if (onOpenCookies) {
-                    e.preventDefault();
-                    onOpenCookies();
-                  }
-                }}
-                className="text-teal-400 underline underline-offset-4 transition-colors hover:text-teal-300"
-              >
-                Cookies
-              </a>
-              <span>·</span>
-              <a
                 href="/faq"
                 onClick={(e) => {
                   if (onOpenFaq) {
@@ -880,19 +867,6 @@ export function DescriptionPage({
                 className="text-teal-400 underline underline-offset-4 transition-colors hover:text-teal-300"
               >
                 FAQ
-              </a>
-              <span>·</span>
-              <a
-                href="/press"
-                onClick={(e) => {
-                  if (onOpenPress) {
-                    e.preventDefault();
-                    onOpenPress();
-                  }
-                }}
-                className="text-teal-400 underline underline-offset-4 transition-colors hover:text-teal-300"
-              >
-                Press
               </a>
               <span>·</span>
               <a

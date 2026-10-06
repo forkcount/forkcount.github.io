@@ -51,14 +51,6 @@ export const LegalFooter: React.FC<LegalFooterProps> = ({
           className="text-teal-400 hover:text-teal-300 underline underline-offset-4 transition-colors"
         >
           Privacy Policy
-        </a>{' '}
-        and{' '}
-        <a
-          href="/cookies"
-          onClick={(e) => handleNav(e, '/cookies', onOpenCookies)}
-          className="text-teal-400 hover:text-teal-300 underline underline-offset-4 transition-colors"
-        >
-          Cookie &amp; Storage Policy
         </a>
         .
       </p>
@@ -80,27 +72,11 @@ export const LegalFooter: React.FC<LegalFooterProps> = ({
         </a>
         <span aria-hidden="true">·</span>
         <a
-          href="/cookies"
-          onClick={(e) => handleNav(e, '/cookies', onOpenCookies)}
-          className="text-teal-400 hover:text-teal-300 underline underline-offset-4 transition-colors"
-        >
-          Cookies
-        </a>
-        <span aria-hidden="true">·</span>
-        <a
           href="/faq"
           onClick={(e) => handleNav(e, '/faq', onOpenFaq)}
           className="text-teal-400 hover:text-teal-300 underline underline-offset-4 transition-colors"
         >
           FAQ
-        </a>
-        <span aria-hidden="true">·</span>
-        <a
-          href="/press"
-          onClick={(e) => handleNav(e, '/press', onOpenPress)}
-          className="text-teal-400 hover:text-teal-300 underline underline-offset-4 transition-colors"
-        >
-          Press
         </a>
         <span aria-hidden="true">·</span>
         <a
