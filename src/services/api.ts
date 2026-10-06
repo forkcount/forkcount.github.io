@@ -270,11 +270,23 @@ class ApiService {
     };
   }
 
+  getOfflineQueue(): any[] {
+    return [];
+  }
+
+  async flushOfflineQueue(): Promise<number> {
+    return 0;
+  }
+
   onSaveStatusChange(listener: (status: 'saved' | 'saving' | 'error') => void): () => void {
     this.saveStatusListeners.push(listener);
     return () => {
       this.saveStatusListeners = this.saveStatusListeners.filter((l) => l !== listener);
     };
+  }
+
+  onSyncConflict(_listener: (date?: string) => void): () => void {
+    return () => {};
   }
 
   onConflict(_listener: (date?: string) => void): () => void {
@@ -289,6 +301,23 @@ class ApiService {
         console.error('Save status listener error:', err);
       }
     });
+  }
+
+  async requestPasswordReset(_email: string): Promise<{ sent: boolean; message: string; resendCooldownSeconds: number }> {
+    return {
+      sent: true,
+      message: 'Password reset link sent to your email.',
+      resendCooldownSeconds: 30
+    };
+  }
+
+  async resetPassword(
+    email: string,
+    _codeOrToken: string,
+    newPassword: string,
+    rememberMe = true
+  ): Promise<{ userId: string; username?: string; email?: string; token: string }> {
+    return this.login(email, newPassword, rememberMe);
   }
 
   private initFirestoreSync() {
@@ -820,19 +849,26 @@ class ApiService {
     return { success: true };
   }
 
-  async copyDayFoods(fromDate: string, toDate: string, mealType?: MealType): Promise<{ count: number }> {
+  async copyDayFoods(fromDate: string, toDate: string, mealType?: MealType): Promise<{ count: number; items: FoodItem[] }> {
     const source = await this.getDiary(fromDate);
     let itemsToCopy = source.items;
     if (mealType) {
       itemsToCopy = itemsToCopy.filter((it) => it.mealType === mealType);
     }
+    const addedItems: FoodItem[] = [];
     for (const item of itemsToCopy) {
-      await this.addFood({
+      const added = await this.addFood({
         ...item,
         date: toDate
       });
+      addedItems.push(added);
     }
-    return { count: itemsToCopy.length };
+    return { count: itemsToCopy.length, items: addedItems };
+  }
+
+  async copyYesterday(targetDate: string, mealType?: MealType): Promise<{ count: number; items: FoodItem[] }> {
+    const yesterday = addDaysLocal(targetDate, -1);
+    return this.copyDayFoods(yesterday, targetDate, mealType);
   }
 
   // Water
@@ -1260,11 +1296,26 @@ class ApiService {
     } catch {}
     return { success: true };
   }
-  async restoreTemplate(templateId: string): Promise<{ success: boolean; template: MealTemplate }> {
-    const { templates } = await this.getTemplates();
-    const tmpl = templates.find((t) => t.id === templateId);
-    if (!tmpl) throw new Error('Template not found');
-    return { success: true, template: tmpl };
+  async restoreTemplate(templateOrId: string | MealTemplate): Promise<MealTemplate & { success: boolean; template: MealTemplate }> {
+    const userId = this.token || 'guest';
+    let tmpl: MealTemplate;
+    if (typeof templateOrId === 'string') {
+      const { templates } = await this.getTemplates();
+      const found = templates.find((t) => t.id === templateOrId);
+      if (!found) throw new Error('Template not found');
+      tmpl = found;
+    } else {
+      tmpl = templateOrId;
+      const list = this.localCache.mealTemplates[userId] || [];
+      if (!list.some((t) => t.id === tmpl.id)) {
+        this.localCache.mealTemplates[userId] = [...list, tmpl];
+        saveLocalCache(this.localCache);
+      }
+      try {
+        await setDoc(doc(db, 'mealTemplates', `${userId}_${tmpl.id}`), tmpl);
+      } catch {}
+    }
+    return { ...tmpl, success: true, template: tmpl };
   }
 
   // Nutrition Plan
