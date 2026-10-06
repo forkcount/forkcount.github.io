@@ -44,6 +44,27 @@ const USER_EMAIL_KEY = 'forkcount_user_email';
 const OFFLINE_CACHE_KEY = 'forkcount_local_cache_v2';
 export const DEV_DEVICE_KEY = 'forkcount_dev_device';
 
+function cleanForFirestore(obj: any): any {
+  if (Array.isArray(obj)) return obj.map(cleanForFirestore);
+  if (obj instanceof Date) return obj;
+  if (obj && typeof obj === 'object') {
+    const out: any = {};
+    for (const k in obj) {
+      if (Object.prototype.hasOwnProperty.call(obj, k)) {
+        if (obj[k] !== undefined) {
+          out[k] = cleanForFirestore(obj[k]);
+        }
+      }
+    }
+    return out;
+  }
+  return obj;
+}
+
+async function safeSetDoc(ref: any, data: any, options?: any) {
+  return setDoc(ref, cleanForFirestore(data), options);
+}
+
 function getDeviceMetadata() {
   const fp = getClientDeviceFingerprint();
   return {
@@ -431,7 +452,7 @@ class ApiService {
           createdAt: Date.now(),
           updatedAt: Date.now()
         };
-        await setDoc(userRef, newRecord);
+        await safeSetDoc(userRef, newRecord);
         return {
           userId: activeId,
           username: isGuest ? 'Guest User' : '',
@@ -510,7 +531,7 @@ class ApiService {
     };
 
     try {
-      await setDoc(doc(db, 'users', userId), userDoc);
+      await safeSetDoc(doc(db, 'users', userId), userDoc);
     } catch (err) {
       handleFirestoreError(err, OperationType.CREATE, `users/${userId}`);
     }
@@ -596,7 +617,7 @@ class ApiService {
       updatedAt: Date.now()
     };
     try {
-      await setDoc(doc(db, 'users', userId), userDoc);
+      await safeSetDoc(doc(db, 'users', userId), userDoc);
     } catch {}
 
     this.setToken(userId, false, rememberMe);
@@ -639,7 +660,7 @@ class ApiService {
     };
 
     try {
-      await setDoc(doc(db, 'users', userId), userDoc, { merge: true });
+      await safeSetDoc(doc(db, 'users', userId), userDoc, { merge: true });
     } catch {}
 
     this.setToken(userId, false, rememberMe);
@@ -685,7 +706,7 @@ class ApiService {
     };
 
     try {
-      await setDoc(doc(db, 'users', userId), userDoc);
+      await safeSetDoc(doc(db, 'users', userId), userDoc);
     } catch {}
 
     this.setToken(userId, false);
@@ -751,7 +772,7 @@ class ApiService {
 
     this.notifySaveStatus('saving');
     try {
-      await setDoc(doc(db, 'diaryEntries', entryId), {
+      await safeSetDoc(doc(db, 'diaryEntries', entryId), {
         userId,
         date,
         items: updated,
@@ -798,7 +819,7 @@ class ApiService {
     const entryId = `${userId}_${targetDate}`;
     this.notifySaveStatus('saving');
     try {
-      await setDoc(doc(db, 'diaryEntries', entryId), {
+      await safeSetDoc(doc(db, 'diaryEntries', entryId), {
         userId,
         date: targetDate,
         items: updated,
@@ -832,7 +853,7 @@ class ApiService {
 
     this.notifySaveStatus('saving');
     try {
-      await setDoc(doc(db, 'diaryEntries', entryId), {
+      await safeSetDoc(doc(db, 'diaryEntries', entryId), {
         userId,
         date: targetDate,
         items: updated,
@@ -896,7 +917,7 @@ class ApiService {
 
     this.notifySaveStatus('saving');
     try {
-      await setDoc(doc(db, 'waterEntries', entryId), {
+      await safeSetDoc(doc(db, 'waterEntries', entryId), {
         userId,
         date,
         ml,
@@ -944,7 +965,7 @@ class ApiService {
 
     this.notifySaveStatus('saving');
     try {
-      await setDoc(doc(db, 'exerciseEntries', entryId), {
+      await safeSetDoc(doc(db, 'exerciseEntries', entryId), {
         userId,
         date,
         items: updated,
@@ -976,7 +997,7 @@ class ApiService {
 
     this.notifySaveStatus('saving');
     try {
-      await setDoc(doc(db, 'exerciseEntries', entryId), {
+      await safeSetDoc(doc(db, 'exerciseEntries', entryId), {
         userId,
         date: targetDate,
         items: updated,
@@ -1016,7 +1037,7 @@ class ApiService {
 
     this.notifySaveStatus('saving');
     try {
-      await setDoc(doc(db, 'weightEntries', `${userId}_${id}`), newRecord);
+      await safeSetDoc(doc(db, 'weightEntries', `${userId}_${id}`), newRecord);
       this.notifySaveStatus('saved');
     } catch (err) {
       handleFirestoreError(err, OperationType.WRITE, `weightEntries/${userId}_${id}`);
@@ -1083,7 +1104,7 @@ class ApiService {
     this.localCache.habits[date] = updated;
     saveLocalCache(this.localCache);
     try {
-      await setDoc(doc(db, 'habits', `${userId}_${date}`), updated);
+      await safeSetDoc(doc(db, 'habits', `${userId}_${date}`), updated);
     } catch {}
     return updated;
   }
@@ -1099,7 +1120,7 @@ class ApiService {
     this.localCache.cravings[userId] = [...list, newCraving];
     saveLocalCache(this.localCache);
     try {
-      await setDoc(doc(db, 'cravings', `${userId}_${newCraving.id}`), newCraving);
+      await safeSetDoc(doc(db, 'cravings', `${userId}_${newCraving.id}`), newCraving);
     } catch {}
     return newCraving;
   }
@@ -1125,7 +1146,7 @@ class ApiService {
     this.localCache.victories[userId] = [...list, newVic];
     saveLocalCache(this.localCache);
     try {
-      await setDoc(doc(db, 'victories', `${userId}_${newVic.id}`), newVic);
+      await safeSetDoc(doc(db, 'victories', `${userId}_${newVic.id}`), newVic);
     } catch {}
     return newVic;
   }
@@ -1151,7 +1172,7 @@ class ApiService {
     this.localCache.pantry[userId] = [...list, item];
     saveLocalCache(this.localCache);
     try {
-      await setDoc(doc(db, 'pantry', `${userId}_${item.id}`), item);
+      await safeSetDoc(doc(db, 'pantry', `${userId}_${item.id}`), item);
     } catch {}
     return item;
   }
@@ -1178,7 +1199,7 @@ class ApiService {
     this.localCache.savedFoods[userId] = [...list, item];
     saveLocalCache(this.localCache);
     try {
-      await setDoc(doc(db, 'savedFoods', `${userId}_${item.id}`), item);
+      await safeSetDoc(doc(db, 'savedFoods', `${userId}_${item.id}`), item);
     } catch {}
     return item;
   }
@@ -1212,7 +1233,7 @@ class ApiService {
     this.localCache.savedRecipes[userId] = [...list, item];
     saveLocalCache(this.localCache);
     try {
-      await setDoc(doc(db, 'savedRecipes', `${userId}_${item.id}`), item);
+      await safeSetDoc(doc(db, 'savedRecipes', `${userId}_${item.id}`), item);
     } catch {}
     return item;
   }
@@ -1270,7 +1291,7 @@ class ApiService {
     this.localCache.mealTemplates[userId] = [...list, tmpl];
     saveLocalCache(this.localCache);
     try {
-      await setDoc(doc(db, 'mealTemplates', `${userId}_${tmpl.id}`), tmpl);
+      await safeSetDoc(doc(db, 'mealTemplates', `${userId}_${tmpl.id}`), tmpl);
     } catch {}
     return tmpl;
   }
@@ -1312,7 +1333,7 @@ class ApiService {
         saveLocalCache(this.localCache);
       }
       try {
-        await setDoc(doc(db, 'mealTemplates', `${userId}_${tmpl.id}`), tmpl);
+        await safeSetDoc(doc(db, 'mealTemplates', `${userId}_${tmpl.id}`), tmpl);
       } catch {}
     }
     return { ...tmpl, success: true, template: tmpl };
@@ -1414,7 +1435,7 @@ class ApiService {
     this.localCache.plans[userId] = plan;
     saveLocalCache(this.localCache);
     try {
-      await setDoc(doc(db, 'plans', userId), { userId, plan, updatedAt: Date.now() });
+      await safeSetDoc(doc(db, 'plans', userId), { userId, plan, updatedAt: Date.now() });
     } catch {}
     return { success: true, plan };
   }
@@ -1443,14 +1464,14 @@ class ApiService {
 
     this.notifySaveStatus('saving');
     try {
-      await updateDoc(doc(db, 'users', userId), {
+      await safeUpdateDoc(doc(db, 'users', userId), {
         profile: updatedProfile,
         updatedAt: Date.now()
       });
       this.notifySaveStatus('saved');
     } catch {
       try {
-        await setDoc(
+        await safeSetDoc(
           doc(db, 'users', userId),
           {
             userId,
@@ -1568,7 +1589,7 @@ class ApiService {
       likesCount: 0
     };
     try {
-      await setDoc(doc(db, 'communityPosts', id), newPost);
+      await safeSetDoc(doc(db, 'communityPosts', id), newPost);
     } catch {}
     return { post: newPost };
   }
@@ -1586,7 +1607,7 @@ class ApiService {
       createdAt: Date.now()
     };
     try {
-      await setDoc(doc(db, 'communityReplies', reply.id), reply);
+      await safeSetDoc(doc(db, 'communityReplies', reply.id), reply);
     } catch {}
     return { reply };
   }
