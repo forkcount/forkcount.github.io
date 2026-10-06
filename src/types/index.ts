@@ -211,8 +211,9 @@ export interface MealTemplate {
 export interface UserProfile {
   name: string;
   username?: string;
+  country?: string;
   age: number;
-  gender: 'male' | 'female' | 'prefer_not_to_say' | '';
+  gender: 'male' | 'female' | 'other' | 'prefer_not_to_say' | '';
   heightCm: number;
   height?: number;
   fitnessLevel: 'beginner' | 'intermediate' | 'advanced' | '';
@@ -223,8 +224,12 @@ export interface UserProfile {
   goalWeight?: number;
   dailyActivity: 'sedentary' | 'light' | 'moderate' | 'active' | 'athlete' | '';
   activity?: string;
-  goalSpeed: 'lose_slow' | 'lose_normal' | 'lose_fast' | 'lose_aggressive' | 'maintain' | 'gain_slow' | 'gain_normal' | '';
-  goal?: string;
+  goalSpeed: 'lose_slow' | 'lose_normal' | 'lose_fast' | 'lose_aggressive' | 'maintain' | 'gain_slow' | 'gain_normal' | 'recomp' | '';
+  goal?: 'lose' | 'maintain' | 'gain' | 'recomp' | string;
+  bmr?: number;
+  tdee?: number;
+  targetCalories?: number;
+  macroTarget?: MacroTarget;
   goalSpeedOverriddenAt?: number;
   signupComplete?: boolean;
   isDev?: boolean;

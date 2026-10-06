@@ -12,9 +12,10 @@ export function hasCompleteProfileStats(profile?: UserProfile | null): boolean {
       profile.goalWeightKg > 0 &&
       (profile.gender === 'male' ||
         profile.gender === 'female' ||
+        profile.gender === 'other' ||
         profile.gender === 'prefer_not_to_say') &&
       profile.dailyActivity &&
-      profile.goalSpeed
+      (profile.goalSpeed || profile.goal)
   );
 }
 
@@ -89,18 +90,22 @@ export function calculateDailyCalorieTarget(profile: UserProfile): number {
     lose_normal: -500,
     lose_fast: -750,
     lose_aggressive: -1000,
+    lose: -500,
     maintain: 0,
     gain_slow: 250,
-    gain_normal: 500
+    gain_normal: 500,
+    gain: 500,
+    recomp: 0
   };
 
-  if (!goalSpeed || !(goalSpeed in speedAdjustments)) {
-    return 0;
+  const selectedKey = profile.goalSpeed || profile.goal || 'maintain';
+  if (!(selectedKey in speedAdjustments)) {
+    return Math.round(tdee);
   }
 
-  let target = tdee + speedAdjustments[goalSpeed];
+  let target = tdee + speedAdjustments[selectedKey];
 
-  // Floor at 1200 for women, 1500 for men, 1350 (average) for prefer_not_to_say
+  // Floor at 1200 for women, 1500 for men, 1350 (average) for other/prefer_not_to_say
   const floor = gender === 'male' ? 1500 : gender === 'female' ? 1200 : 1350;
   if (target < floor) {
     target = floor;
@@ -111,28 +116,31 @@ export function calculateDailyCalorieTarget(profile: UserProfile): number {
 
 /**
  * Auto-calculate macros from the calorie goal:
- * Fat = 30% of target ÷ 9
- * Protein = 30% of target ÷ 4
- * Carbs = 40% of target ÷ 4
+ * Standard: 30% Protein, 30% Fat, 40% Carbs
+ * Recomp: 35% Protein, 25% Fat, 40% Carbs
  * The three percentages must add to 100%. Grams × 4/4/9 must equal the target exactly.
- * Handle the 9 kcal/g rounding by nudging fat by 1–2 grams so carbs divide cleanly by 4.
  */
-export function calculateMacroTargets(targetCalories: number): MacroTarget {
+export function calculateMacroTargets(targetCalories: number, goal?: string): MacroTarget {
   const target = targetCalories;
+  const isRecomp = goal === 'recomp';
+  const proteinPct = isRecomp ? 35 : 30;
+  const fatPct = isRecomp ? 25 : 30;
+  const carbsPct = 40;
+
   if (!target || target <= 0) {
     return {
       calories: 0,
       carbsGrams: 0,
       fatGrams: 0,
       proteinGrams: 0,
-      carbsPct: 40,
-      fatPct: 30,
-      proteinPct: 30
+      carbsPct,
+      fatPct,
+      proteinPct
     };
   }
 
-  const targetFatKcal = target * 0.30;
-  const targetProteinKcal = target * 0.30;
+  const targetFatKcal = target * (fatPct / 100);
+  const targetProteinKcal = target * (proteinPct / 100);
 
   let proteinGrams = Math.round(targetProteinKcal / 4);
   let fatGrams = Math.round(targetFatKcal / 9);
@@ -174,9 +182,9 @@ export function calculateMacroTargets(targetCalories: number): MacroTarget {
     carbsGrams,
     fatGrams,
     proteinGrams,
-    carbsPct: 40,
-    fatPct: 30,
-    proteinPct: 30
+    carbsPct,
+    fatPct,
+    proteinPct
   };
 }
 
