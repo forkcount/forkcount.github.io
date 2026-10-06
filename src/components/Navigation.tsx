@@ -115,6 +115,7 @@ export const Navigation: React.FC<NavigationProps> = ({ currentTab, onTabChange,
     { id: 'diary' as TabType, label: t('diary', language), icon: BookOpen },
     { id: 'fitness' as TabType, label: t('fitness', language), icon: Activity },
     { id: 'community' as TabType, label: t('community', language), icon: Users },
+    { id: 'plan' as TabType, label: 'Plans', icon: CalendarCheck },
     { id: 'reports' as TabType, label: t('reports', language), icon: BarChart3 },
     { id: 'me' as TabType, label: t('me', language), icon: User }
   ];
@@ -230,22 +231,17 @@ export const Navigation: React.FC<NavigationProps> = ({ currentTab, onTabChange,
               {theme === 'dark' ? <Sun className="w-3.5 h-3.5" /> : <Moon className="w-3.5 h-3.5" />}
             </button>
 
-            <button
-              onClick={() => openAuthModal()}
-              aria-label={isGuest ? 'Sign in or create account' : 'Account details'}
-              className={`text-xs px-2.5 py-1.5 rounded-lg border transition-colors flex items-center gap-1.5 ${
-                isGuest
-                  ? 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-zinc-200 hover:border-zinc-700'
-                  : 'bg-teal-950/40 border-teal-800/60 text-teal-300'
-              }`}
-            >
-              <span className="w-1.5 h-1.5 rounded-full bg-teal-400"></span>
-              <span>
-                {isGuest
-                  ? 'Guest'
-                  : `@${(isDevAccount ? 'housefly' : (profile?.username || userEmail?.split('@')[0] || 'Sync')).replace(/^@/, '')}`}
-              </span>
-            </button>
+            {isGuest && (
+              <button
+                type="button"
+                onClick={() => openAuthModal()}
+                aria-label="Sign in or create account"
+                className="text-xs px-2.5 py-1.5 rounded-lg border border-zinc-800 bg-zinc-900 text-zinc-400 hover:text-zinc-200 transition-colors flex items-center gap-1.5"
+              >
+                <span className="w-1.5 h-1.5 rounded-full bg-teal-400" />
+                <span>Sign in</span>
+              </button>
+            )}
           </div>
         </div>
       </header>
@@ -259,9 +255,9 @@ export const Navigation: React.FC<NavigationProps> = ({ currentTab, onTabChange,
         />
       )}
 
-      {/* Bottom Tab Bar */}
-      <nav className="fixed bottom-0 left-0 right-0 z-40 bg-zinc-950/95 backdrop-blur-md border-t border-zinc-850 px-2 py-2">
-        <div className="max-w-md mx-auto flex items-center justify-around">
+      {/* Bottom Tab Bar — Always renders all 6 tabs */}
+      <nav className="fixed bottom-0 left-0 right-0 z-40 bg-zinc-950/95 backdrop-blur-md border-t border-zinc-850 px-1 py-1 pb-[calc(0.35rem+env(safe-area-inset-bottom,0px))]">
+        <div className="max-w-md mx-auto flex items-center justify-between gap-0.5">
           {navItems.map((item) => {
             const Icon = item.icon;
             const isActive = currentTab === item.id;
@@ -271,7 +267,7 @@ export const Navigation: React.FC<NavigationProps> = ({ currentTab, onTabChange,
                 key={item.id}
                 onClick={() => handleTabClick(item.id)}
                 aria-label={item.label}
-                className={`min-h-[44px] min-w-[44px] flex flex-col items-center justify-center gap-1 py-1 px-3 rounded-xl transition-all ${
+                className={`min-h-[44px] flex-1 flex flex-col items-center justify-center gap-0.5 py-1 px-0.5 rounded-lg transition-all ${
                   isActive
                     ? 'text-teal-400 font-semibold'
                     : isLockedForGuest
@@ -279,8 +275,8 @@ export const Navigation: React.FC<NavigationProps> = ({ currentTab, onTabChange,
                       : 'text-zinc-500 hover:text-zinc-300 font-normal'
                 }`}
               >
-                <Icon className={`w-5 h-5 transition-transform ${isActive ? 'scale-110 text-teal-400' : isLockedForGuest ? 'text-zinc-600' : 'text-zinc-500'}`} />
-                <span className="text-[10px] tracking-tight">{item.label}</span>
+                <Icon className={`w-[18px] h-[18px] transition-transform ${isActive ? 'scale-110 text-teal-400' : isLockedForGuest ? 'text-zinc-600' : 'text-zinc-500'}`} />
+                <span className="text-[9px] leading-none tracking-tight">{item.label}</span>
               </button>
             );
           })}

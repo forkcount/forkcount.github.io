@@ -167,10 +167,11 @@ export const MeTab: React.FC<MeTabProps> = ({
     }
   };
 
-  // Account deletion 2-step state & notice
-  const [deleteStep, setDeleteStep] = useState<0 | 1>(0);
-  const [deletePasswordConfirm, setDeletePasswordConfirm] = useState('');
+  // Account deletion modal state
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [devConfirmInput, setDevConfirmInput] = useState('');
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [deletedBanner, setDeletedBanner] = useState<string | null>(() => {
     const msg = sessionStorage.getItem('forkcount_deleted_notice') || sessionStorage.getItem('caloriq_deleted_notice');
     if (msg) {
@@ -225,6 +226,12 @@ export const MeTab: React.FC<MeTabProps> = ({
   const activeUsername = (safeProfile.username || formData?.username || 'housefly')
     .replace(/^@/, '')
     .split('@')[0];
+
+  const isDevAccount =
+    !isGuest &&
+    (userId === 'usr_dev_housefly' ||
+      userId === 'usr_545648c7-5e38-44fc-adc5-373e0b3e5e18' ||
+      activeUsername.toLowerCase() === 'housefly');
 
   // "Why I started" pinned card state (#42)
   const [whyText, setWhyText] = useState(safeProfile.pinnedWhy || '');
@@ -512,34 +519,22 @@ export const MeTab: React.FC<MeTabProps> = ({
     }
   };
 
-  const handlePermanentDeleteAccount = async () => {
+  const handleConfirmDeleteAccount = async () => {
     setDeleteError(null);
-    if (!isGuest && !deletePasswordConfirm.trim()) {
-      setDeleteError('Please enter your password (or type DELETE) to confirm permanent deletion.');
+    if (isDevAccount && devConfirmInput.trim().toLowerCase() !== 'housefly') {
+      setDeleteError('Dev Account Protection: Type "housefly" to confirm deletion.');
       return;
     }
+    setIsDeleting(true);
     try {
-      await api.deleteAccount(deletePasswordConfirm.trim());
+      await api.deleteAccount();
     } catch (err: any) {
-      if (!isGuest && err?.message) {
-        setDeleteError(err.message);
-        return;
-      }
+      console.error('Error during account deletion:', err);
+    } finally {
+      localStorage.clear();
+      sessionStorage.clear();
+      window.location.href = '/';
     }
-    const keysToRemove: string[] = [];
-    for (let i = 0; i < localStorage.length; i++) {
-      const k = localStorage.key(i);
-      if (k && (k.startsWith('forkcount') || k.startsWith('caloriq'))) keysToRemove.push(k);
-    }
-    keysToRemove.forEach((k) => localStorage.removeItem(k));
-    sessionStorage.setItem(
-      'forkcount_deleted_notice',
-      'Your account and all your data have been deleted.'
-    );
-    await resetGuestSession();
-    setDeleteStep(0);
-    setDeletePasswordConfirm('');
-    setDeletedBanner('Your account and all your data have been deleted.');
   };
 
   const handleRedeemReferral = async (e: React.FormEvent) => {
@@ -2022,65 +2017,89 @@ export const MeTab: React.FC<MeTabProps> = ({
             Clear all data
           </button>
 
-          {/* #18 & #43 Two-Step Account Deletion with Password Confirmation */}
-          {deleteStep === 0 ? (
+          {/* Destructive Action: Delete Account */}
+          <div className="pt-3 border-t border-rose-950/80 mt-4">
             <button
               type="button"
-              onClick={() => setDeleteStep(1)}
+              onClick={() => {
+                setShowDeleteModal(true);
+                setDevConfirmInput('');
+                setDeleteError(null);
+              }}
               aria-label="Delete account"
-              className="w-full min-h-[44px] p-2.5 bg-rose-950/20 hover:bg-rose-950/40 border border-rose-900/40 text-rose-300 rounded-xl text-xs font-semibold flex items-center justify-center gap-2 transition-colors"
+              className="w-full min-h-[44px] p-2.5 bg-rose-950/20 hover:bg-rose-950/40 border border-rose-900/40 text-rose-400 hover:text-rose-300 rounded-xl text-xs font-semibold flex items-center justify-center gap-2 transition-colors cursor-pointer"
             >
-              <AlertTriangle className="w-4 h-4 text-rose-400" />
-              Delete account?
+              <Trash2 className="w-4 h-4 text-rose-400" />
+              <span>Delete account</span>
             </button>
-          ) : (
-            <div className="p-3 bg-rose-950/30 border border-rose-500/50 rounded-xl space-y-2.5">
-              <p className="text-xs text-rose-200 font-medium text-center">
-                Are you sure? This permanently deletes your account and all your data.
-              </p>
-              {!isGuest && (
-                <input
-                  type="password"
-                  value={deletePasswordConfirm}
-                  onChange={(e) => setDeletePasswordConfirm(e.target.value)}
-                  placeholder="Enter your password (or type DELETE) to confirm"
-                  aria-label="Confirm password to delete account"
-                  className="w-full bg-zinc-950 border border-rose-500/40 rounded-lg px-3 py-2 text-xs text-zinc-100 placeholder:text-zinc-500"
-                />
-              )}
-              {deleteError && (
-                <p role="alert" className="text-xs text-rose-300 text-center">
-                  {deleteError}
-                </p>
-              )}
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={handlePermanentDeleteAccount}
-                  aria-label="Yes, delete everything permanently"
-                  className="flex-1 min-h-[44px] py-2 px-3 bg-rose-600 hover:bg-rose-500 text-white font-bold rounded-xl text-xs transition-colors shadow-lg shadow-rose-600/30"
-                >
-                  Yes, delete everything permanently.
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setDeleteStep(0);
-                    setDeletePasswordConfirm('');
-                    setDeleteError(null);
-                  }}
-                  aria-label="Cancel account deletion"
-                  className="px-3 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-xl text-xs font-medium"
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-          )}
+          </div>
 
           <SecretFooter className="pt-2 text-center text-[11px] font-mono text-zinc-400" />
         </div>
       </div>
+
+      {/* Delete Account Confirmation Dialog */}
+      {showDeleteModal && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-fadeIn"
+        >
+          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl max-w-sm w-full p-6 shadow-2xl space-y-4">
+            <div className="flex items-center gap-2.5 text-rose-400">
+              <AlertTriangle className="w-5 h-5 shrink-0 text-rose-500" />
+              <h3 className="font-bold text-base text-zinc-100">Delete your account?</h3>
+            </div>
+
+            <p className="text-xs text-zinc-300 leading-relaxed">
+              This will permanently delete your account, your meals, your weight log, your plans, and your community posts. This cannot be undone.
+            </p>
+
+            {isDevAccount && (
+              <div className="space-y-1.5 pt-1">
+                <label className="block text-[11px] font-medium text-amber-300">
+                  Dev Account Protection: Type <code className="font-mono text-xs text-amber-200">housefly</code> to confirm.
+                </label>
+                <input
+                  type="text"
+                  value={devConfirmInput}
+                  onChange={(e) => setDevConfirmInput(e.target.value)}
+                  placeholder="Type housefly"
+                  className="w-full bg-zinc-950 border border-zinc-700 rounded-xl px-3 py-2 text-xs text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-rose-500"
+                />
+              </div>
+            )}
+
+            {deleteError && (
+              <p role="alert" className="text-xs text-rose-400 font-medium">
+                {deleteError}
+              </p>
+            )}
+
+            <div className="flex items-center gap-2.5 pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowDeleteModal(false);
+                  setDevConfirmInput('');
+                  setDeleteError(null);
+                }}
+                className="flex-1 min-h-[44px] py-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded-xl text-xs font-semibold transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isDeleting || (isDevAccount && devConfirmInput.trim().toLowerCase() !== 'housefly')}
+                onClick={handleConfirmDeleteAccount}
+                className="flex-1 min-h-[44px] py-2.5 bg-rose-600 hover:bg-rose-500 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-xl text-xs font-bold transition-colors shadow-lg shadow-rose-600/30 cursor-pointer"
+              >
+                {isDeleting ? 'Deleting...' : 'Delete forever'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* #18 Two-step confirmation for clearing all data */}
       <ConfirmDialog

@@ -1533,13 +1533,69 @@ class ApiService {
 
   async deleteAccount(_password?: string): Promise<{ success: boolean; message: string }> {
     const userId = this.token;
-    if (userId) {
+    if (userId && userId !== 'guest') {
       try {
-        await deleteDoc(doc(db, 'users', userId));
-      } catch {}
+        // 1. Delete user profile and plan documents
+        await Promise.all([
+          deleteDoc(doc(db, 'users', userId)).catch(() => {}),
+          deleteDoc(doc(db, 'plans', userId)).catch(() => {})
+        ]);
+
+        // 2. Collections where entries belong to this user
+        const userCollections = [
+          'diaryEntries',
+          'waterEntries',
+          'exerciseEntries',
+          'weightEntries',
+          'savedFoods',
+          'savedRecipes',
+          'mealTemplates',
+          'pantry',
+          'cravings',
+          'victories',
+          'habits'
+        ];
+
+        for (const colName of userCollections) {
+          try {
+            const q = query(collection(db, colName), where('userId', '==', userId));
+            const snap = await getDocs(q);
+            await Promise.all(snap.docs.map((d) => deleteDoc(d.ref).catch(() => {})));
+          } catch {}
+        }
+
+        // 3. Community posts and replies authored by this user
+        try {
+          const postsQ = query(collection(db, 'communityPosts'), where('userId', '==', userId));
+          const postsSnap = await getDocs(postsQ);
+          await Promise.all(postsSnap.docs.map((d) => deleteDoc(d.ref).catch(() => {})));
+        } catch {}
+
+        try {
+          const repliesQ = query(collection(db, 'communityReplies'), where('userId', '==', userId));
+          const repliesSnap = await getDocs(repliesQ);
+          await Promise.all(repliesSnap.docs.map((d) => deleteDoc(d.ref).catch(() => {})));
+        } catch {}
+
+        // 4. Delete Firebase Auth user if present
+        if (auth.currentUser) {
+          try {
+            await auth.currentUser.delete();
+          } catch (authErr) {
+            console.warn('Firebase auth user deletion notice:', authErr);
+          }
+        }
+      } catch (err) {
+        console.error('Error during full account deletion:', err);
+      }
     }
+
+    // 5. Clear all browser storage and local token
+    localStorage.clear();
+    sessionStorage.clear();
     this.clearToken();
-    return { success: true, message: 'Account deleted.' };
+
+    return { success: true, message: 'Account permanently deleted.' };
   }
 
   // Social & Community
