@@ -72,6 +72,8 @@ interface AppContextType {
   isOnline: boolean;
   offlineQueueCount: number;
   isLoading: boolean;
+  offlineWarning: string | null;
+  setOfflineWarning: (warning: string | null) => void;
   isSyncing: boolean;
   saveStatus: 'saved' | 'saving' | 'error';
   hasSyncConflict: boolean;
@@ -333,6 +335,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [offlineQueueCount, setOfflineQueueCount] = useState<number>(0);
 
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [offlineWarning, setOfflineWarning] = useState<string | null>(null);
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'error'>('saved');
   const [hasSyncConflict, setHasSyncConflict] = useState<boolean>(false);
@@ -572,10 +575,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   useEffect(() => {
     let unregisterSync: (() => void) | undefined;
 
+    // Fallback: If init takes longer than 5 seconds, force loading to false and show offline warning
+    const fallbackTimer = setTimeout(() => {
+      setIsLoading(false);
+      setIsGuest(true);
+      setOfflineWarning('Could not reach server. Running in offline mode.');
+    }, 5000);
+
     async function init() {
       setIsLoading(true);
       try {
         const session = await api.initSession();
+        clearTimeout(fallbackTimer);
         setUserId(session.userId);
         setUserEmail(session.username || session.email);
         setIsGuest(session.isGuest);
@@ -594,7 +605,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         });
       } catch (err) {
         console.error('Failed to init session:', err);
+        clearTimeout(fallbackTimer);
+        setIsGuest(true);
+        setOfflineWarning('Could not reach server. Running in offline mode.');
       } finally {
+        clearTimeout(fallbackTimer);
         setIsLoading(false);
       }
     }
@@ -602,6 +617,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     init();
 
     return () => {
+      clearTimeout(fallbackTimer);
       if (unregisterSync) unregisterSync();
     };
   }, []);
@@ -962,6 +978,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         isOnline,
         offlineQueueCount,
         isLoading,
+        offlineWarning,
+        setOfflineWarning,
         isSyncing,
         saveStatus,
         hasSyncConflict,
@@ -1005,6 +1023,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         onAuthSuccess
       }}
     >
+      {offlineWarning && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="fixed top-2 left-1/2 -translate-x-1/2 z-[100] max-w-md w-[92%] bg-amber-950/95 border border-amber-500/50 rounded-xl px-4 py-2.5 text-center text-xs text-amber-200 shadow-2xl flex items-center justify-between gap-2 no-print"
+        >
+          <span className="font-medium">{offlineWarning}</span>
+          <button
+            type="button"
+            onClick={() => setOfflineWarning(null)}
+            className="text-amber-400 hover:text-amber-100 font-bold text-xs ml-2 px-1.5 py-0.5 rounded bg-amber-900/50"
+            aria-label="Dismiss offline warning"
+          >
+            ✕
+          </button>
+        </div>
+      )}
       {children}
     </AppContext.Provider>
   );

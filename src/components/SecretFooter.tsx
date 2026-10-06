@@ -58,19 +58,6 @@ export const SecretFooter: React.FC<SecretFooterProps> = ({ className = 'pt-2 te
       sessionStorage.removeItem('forkcount_is_first_session');
       sessionStorage.removeItem('caloriq_is_first_session');
 
-      try {
-        await fetch('/api/auth/dev-auto-login', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            deviceToken: devToken,
-            browserSig
-          })
-        });
-      } catch {
-        // ignore network error, local storage and token already set
-      }
-
       // 2. Reload to /dashboard signed in as @housefly
       window.location.href = '/dashboard';
     } catch (err) {

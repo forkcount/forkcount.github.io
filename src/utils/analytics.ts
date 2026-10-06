@@ -58,18 +58,8 @@ export async function trackPrivacyEvent(
     localStorage.setItem(key, '1');
   }
 
-  try {
-    await fetch('/api/analytics/event', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        event,
-        path: String(path || '/').slice(0, 64)
-      })
-    });
-  } catch {
-    // Analytics failure is silently ignored
-  }
+  // Privacy-friendly client-only analytics event tracking
+  return;
 }
 
 export function trackPageview(path?: string): void {

@@ -616,18 +616,6 @@ export default function App() {
     const handleSwUpdate = () => setSwUpdateAvailable(true);
     window.addEventListener('forkcount-sw-update', handleSwUpdate);
 
-    fetch('/api/health')
-      .then((r) => r.json())
-      .then((data) => {
-        if (data?.maintenanceMode) {
-          setMaintenanceInfo({
-            active: true,
-            message: data.maintenanceMessage || 'ForkCount is undergoing scheduled maintenance.'
-          });
-        }
-      })
-      .catch(() => {});
-
     return () => {
       window.removeEventListener('beforeinstallprompt', handleBeforeInstall);
       window.removeEventListener('forkcount-sw-update', handleSwUpdate);

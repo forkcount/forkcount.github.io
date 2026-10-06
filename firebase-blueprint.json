@@ -1,0 +1,147 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User profile and credentials",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "email": { "type": "string" },
+        "username": { "type": "string" },
+        "passwordHash": { "type": "string" },
+        "profile": { "type": "object" },
+        "stats": { "type": "object" },
+        "createdAt": { "type": "number" },
+        "updatedAt": { "type": "number" }
+      },
+      "required": ["userId"]
+    },
+    "DiaryEntry": {
+      "title": "DiaryEntry",
+      "description": "Daily food log entry",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "date": { "type": "string" },
+        "items": { "type": "array" },
+        "updatedAt": { "type": "number" }
+      },
+      "required": ["userId", "date"]
+    },
+    "WaterEntry": {
+      "title": "WaterEntry",
+      "description": "Daily water log entry",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "date": { "type": "string" },
+        "ml": { "type": "number" },
+        "updatedAt": { "type": "number" }
+      },
+      "required": ["userId", "date", "ml"]
+    },
+    "ExerciseEntry": {
+      "title": "ExerciseEntry",
+      "description": "Daily exercise log entry",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "date": { "type": "string" },
+        "items": { "type": "array" },
+        "updatedAt": { "type": "number" }
+      },
+      "required": ["userId", "date"]
+    },
+    "WeightEntry": {
+      "title": "WeightEntry",
+      "description": "Weight log entry",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "date": { "type": "string" },
+        "weightKg": { "type": "number" },
+        "notes": { "type": "string" },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["userId", "date", "weightKg"]
+    },
+    "PlanDoc": {
+      "title": "PlanDoc",
+      "description": "User weekly plan",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "plan": { "type": "object" },
+        "updatedAt": { "type": "number" }
+      },
+      "required": ["userId", "plan"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "Stores user profiles and account metadata"
+    },
+    "/diaryEntries/{entryId}": {
+      "schema": "DiaryEntry",
+      "description": "Stores daily food logs by user and date"
+    },
+    "/waterEntries/{entryId}": {
+      "schema": "WaterEntry",
+      "description": "Stores daily water logs by user and date"
+    },
+    "/exerciseEntries/{entryId}": {
+      "schema": "ExerciseEntry",
+      "description": "Stores daily exercise logs by user and date"
+    },
+    "/weightEntries/{entryId}": {
+      "schema": "WeightEntry",
+      "description": "Stores user weight records"
+    },
+    "/plans/{userId}": {
+      "schema": "PlanDoc",
+      "description": "Stores user meal and nutrition plans"
+    },
+    "/habits/{entryId}": {
+      "schema": "DiaryEntry",
+      "description": "Stores user habit logs"
+    },
+    "/cravings/{entryId}": {
+      "schema": "DiaryEntry",
+      "description": "Stores user cravings logs"
+    },
+    "/victories/{entryId}": {
+      "schema": "DiaryEntry",
+      "description": "Stores non-scale victories"
+    },
+    "/pantry/{entryId}": {
+      "schema": "DiaryEntry",
+      "description": "Stores pantry inventory"
+    },
+    "/savedFoods/{entryId}": {
+      "schema": "DiaryEntry",
+      "description": "Stores custom saved foods"
+    },
+    "/savedRecipes/{entryId}": {
+      "schema": "DiaryEntry",
+      "description": "Stores custom saved recipes"
+    },
+    "/mealTemplates/{entryId}": {
+      "schema": "DiaryEntry",
+      "description": "Stores meal templates"
+    },
+    "/communityPosts/{postId}": {
+      "schema": "DiaryEntry",
+      "description": "Stores public community posts"
+    },
+    "/communityReplies/{replyId}": {
+      "schema": "DiaryEntry",
+      "description": "Stores community replies"
+    },
+    "/socialFriends/{friendId}": {
+      "schema": "DiaryEntry",
+      "description": "Stores social friends and connections"
+    }
+  }
+}

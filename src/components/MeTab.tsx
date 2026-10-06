@@ -419,8 +419,7 @@ export const MeTab: React.FC<MeTabProps> = ({
 
       let serverExport: any = {};
       try {
-        const res = await fetch(`/api/export?token=${api.getToken() || ''}`);
-        if (res.ok) serverExport = await res.json();
+        serverExport = await api.exportData();
       } catch {
         // ignore
       }

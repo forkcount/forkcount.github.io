@@ -1,87 +1,113 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Helper function to verify authenticated user owns the document
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
     function isOwner(userId) {
-      return request.auth != null && request.auth.uid == userId;
+      return isSignedIn() && request.auth.uid == userId;
     }
 
-    // Helper function to verify the single developer account
-    function isDev() {
-      return request.auth != null && (
-        request.auth.uid == 'usr_dev_housefly' ||
-        (request.auth.token.email != null && request.auth.token.email == 'housefly@mail2world.com')
-      );
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
     }
 
-    match /posts/{postId} {
-      allow read: if true;
-      allow create: if request.auth != null &&
-        request.resource.data.userId == request.auth.uid &&
-        request.resource.data.text is string &&
-        request.resource.data.text.size() > 0 &&
-        request.resource.data.text.size() <= 500 &&
-        request.resource.data.username is string &&
-        request.resource.data.likeCount == 0 &&
-        request.resource.data.replyCount == 0;
-      allow update: if request.auth != null;
-      allow delete: if request.auth != null && (resource.data.userId == request.auth.uid || isDev());
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
     }
 
-    match /replies/{replyId} {
-      allow read: if true;
-      allow create: if request.auth != null &&
-        request.resource.data.userId == request.auth.uid &&
-        request.resource.data.postId is string &&
-        request.resource.data.username is string &&
-        request.resource.data.text is string &&
-        request.resource.data.text.size() > 0 &&
-        request.resource.data.text.size() <= 500;
-      allow delete: if request.auth != null && (resource.data.userId == request.auth.uid || isDev());
-    }
-
+    // Users Collection
     match /users/{userId} {
-      allow read, create, update, delete, write: if isOwner(userId);
-      allow read, delete: if isDev();
-
-      match /{allSubcollections=**} {
-        allow read, create, update, delete, write: if isOwner(userId);
-        allow read, delete: if isDev();
-      }
+      allow read: if true;
+      allow write: if true;
     }
 
-    match /profiles/{userId} {
-      allow read, create, update, delete, write: if isOwner(userId);
-      allow read, delete: if isDev();
-    }
-
+    // Daily Food Diaries
     match /diaryEntries/{entryId} {
-      allow read, update, delete: if request.auth != null && (resource.data.userId == request.auth.uid || isDev());
-      allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
+      allow read: if true;
+      allow write: if true;
     }
 
+    // Water Logs
     match /waterEntries/{entryId} {
-      allow read, update, delete: if request.auth != null && (resource.data.userId == request.auth.uid || isDev());
-      allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
+      allow read: if true;
+      allow write: if true;
     }
 
+    // Exercise Logs
     match /exerciseEntries/{entryId} {
-      allow read, update, delete: if request.auth != null && (resource.data.userId == request.auth.uid || isDev());
-      allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
+      allow read: if true;
+      allow write: if true;
     }
 
+    // Weight Records
     match /weightEntries/{entryId} {
-      allow read, update, delete: if request.auth != null && (resource.data.userId == request.auth.uid || isDev());
-      allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
+      allow read: if true;
+      allow write: if true;
     }
 
+    // Nutrition / Meal Plans
     match /plans/{userId} {
-      allow read, create, update, delete, write: if isOwner(userId) || isDev();
+      allow read: if true;
+      allow write: if true;
     }
 
-    // Security events detective log — block all non-dev reads and writes
-    match /securityEvents/{eventId} {
-      allow read, write: if isDev();
+    // Habits, Cravings, Victories, Pantry, Saved Foods, Templates
+    match /habits/{entryId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    match /cravings/{entryId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    match /victories/{entryId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    match /pantry/{entryId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    match /savedFoods/{entryId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    match /savedRecipes/{entryId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    match /mealTemplates/{entryId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    match /communityPosts/{postId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    match /communityReplies/{replyId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    match /socialFriends/{friendId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    match /test/{docId} {
+      allow read, write: if true;
     }
   }
 }
