@@ -901,7 +901,9 @@ class ApiService {
     try {
       const snap = await getDoc(doc(db, 'waterEntries', entryId));
       if (snap.exists()) {
-        const ml = Number(snap.data().ml || 0);
+        const waterData = snap.data();
+        console.log('WATER READ:', JSON.stringify(waterData, null, 2));
+        const ml = Number(waterData.ml || 0);
         this.localCache.water[date] = ml;
         saveLocalCache(this.localCache);
         return { date, ml };
@@ -917,14 +919,19 @@ class ApiService {
     this.localCache.water[date] = ml;
     saveLocalCache(this.localCache);
 
+    const waterData = {
+      userId,
+      date,
+      ml,
+      updatedAt: Date.now()
+    };
+
+    console.log('WATER WRITE:', JSON.stringify(waterData, (k, v) => (v === undefined ? '__UNDEFINED__' : v), 2));
+
     this.notifySaveStatus('saving');
     try {
-      await safeSetDoc(doc(db, 'waterEntries', entryId), {
-        userId,
-        date,
-        ml,
-        updatedAt: Date.now()
-      });
+      await safeSetDoc(doc(db, 'waterEntries', entryId), waterData);
+      console.log('WATER WRITE OK');
       this.notifySaveStatus('saved');
     } catch (err) {
       handleFirestoreError(err, OperationType.WRITE, `waterEntries/${entryId}`);
