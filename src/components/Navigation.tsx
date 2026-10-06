@@ -57,15 +57,13 @@ export const Navigation: React.FC<NavigationProps> = ({ currentTab, onTabChange,
 
   const [isDevToolsOpen, setIsDevToolsOpen] = useState(false);
 
+  const currentUser = { id: userId };
+  console.log('DEV CHECK:', { userId: currentUser?.id, isDev: profile?.isDev });
+
   const isDevAccount =
     !isGuest &&
-    Boolean(isDev) &&
-    profile?.isDev !== false &&
-    (userId === 'usr_dev_housefly' ||
-      userId === 'usr_545648c7-5e38-44fc-adc5-373e0b3e5e18' ||
-      (userEmail || '').toLowerCase().replace(/^@/, '') === 'housefly' ||
-      (userEmail || '').toLowerCase() === 'housefly@mail2world.com' ||
-      (profile?.username || '').toLowerCase().replace(/^@/, '') === 'housefly');
+    (Boolean(isDev) || Boolean(profile?.isDev) || (profile?.username || '').toLowerCase().replace(/^@/, '') === 'housefly' || (userEmail || '').toLowerCase().includes('housefly')) &&
+    profile?.isDev !== false;
 
   useEffect(() => {
     const handleOpenDev = () => {
