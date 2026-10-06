@@ -315,6 +315,26 @@ class ApiService {
   }
 
   // Auth / Session Management
+  async verifyStoredSessionOnLoad(): Promise<{
+    hasValidToken: boolean;
+    devAccountExists?: boolean;
+    userId?: string;
+  }> {
+    const token = this.getToken();
+    const isGuest = !token || token.startsWith('guest_');
+    if (!isGuest && token) {
+      return {
+        hasValidToken: true,
+        userId: token
+      };
+    }
+    const hasDevDevice = getStoredDevDeviceRecord() !== null;
+    return {
+      hasValidToken: false,
+      devAccountExists: hasDevDevice
+    };
+  }
+
   async initSession(): Promise<{
     userId: string;
     username?: string;
