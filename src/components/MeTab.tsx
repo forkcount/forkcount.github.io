@@ -197,23 +197,38 @@ export const MeTab: React.FC<MeTabProps> = ({
     return d.toLocaleString();
   })();
 
+  const safeProfile: UserProfile = {
+    name: '',
+    username: '',
+    age: 0,
+    gender: '',
+    heightCm: 0,
+    fitnessLevel: '',
+    currentWeightKg: 0,
+    goalWeightKg: 0,
+    dailyActivity: '',
+    goalSpeed: '',
+    unitSystem: 'metric',
+    ...(profile || {})
+  };
+
   // Form State
-  const [formData, setFormData] = useState<UserProfile>(profile);
-  const [heightFtInput, setHeightFtInput] = useState<string>(() => cmToFtIn(profile.heightCm).ft);
-  const [heightInInput, setHeightInInput] = useState<string>(() => cmToFtIn(profile.heightCm).in);
+  const [formData, setFormData] = useState<UserProfile>(safeProfile);
+  const [heightFtInput, setHeightFtInput] = useState<string>(() => cmToFtIn(safeProfile.heightCm).ft);
+  const [heightInInput, setHeightInInput] = useState<string>(() => cmToFtIn(safeProfile.heightCm).in);
   const [saveStatus, setSaveStatus] = useState<string | null>(null);
   const [profileError, setProfileError] = useState<string | null>(null);
   const [showProjectedWhy, setShowProjectedWhy] = useState(false);
   const [localGoalSpeedOverride, setLocalGoalSpeedOverride] = useState(false);
   const debouncedFormData = useDebounce(formData, 400);
 
-  const activeUsername = (profile.username || formData.username || 'housefly')
+  const activeUsername = (safeProfile.username || formData?.username || 'housefly')
     .replace(/^@/, '')
     .split('@')[0];
 
   // "Why I started" pinned card state (#42)
-  const [whyText, setWhyText] = useState(profile.pinnedWhy || '');
-  const [isEditingWhy, setIsEditingWhy] = useState(!profile.pinnedWhy);
+  const [whyText, setWhyText] = useState(safeProfile.pinnedWhy || '');
+  const [isEditingWhy, setIsEditingWhy] = useState(!safeProfile.pinnedWhy);
 
   // Non-scale victories (#41)
   const [newVictory, setNewVictory] = useState('');
@@ -240,7 +255,7 @@ export const MeTab: React.FC<MeTabProps> = ({
 
   // Referral code state
   const myReferralCode =
-    profile.referralCode ||
+    safeProfile.referralCode ||
     `CQ${(userId || 'GUEST').replace(/[^a-zA-Z0-9]/g, '').slice(0, 5).toUpperCase()}`;
   const [friendCodeInput, setFriendCodeInput] = useState('');
   const [referralMsg, setReferralMsg] = useState<string | null>(null);
@@ -259,16 +274,16 @@ export const MeTab: React.FC<MeTabProps> = ({
   const [showRecapModal, setShowRecapModal] = useState(false);
   // #57 Custom reminder times
   const [reminders, setReminders] = useState({
-    breakfast: profile.reminderTimes?.breakfast || '08:00',
-    lunch: profile.reminderTimes?.lunch || '13:00',
-    dinner: profile.reminderTimes?.dinner || '19:00',
-    water: profile.reminderTimes?.water || '15:00'
+    breakfast: safeProfile.reminderTimes?.breakfast || '08:00',
+    lunch: safeProfile.reminderTimes?.lunch || '13:00',
+    dinner: safeProfile.reminderTimes?.dinner || '19:00',
+    water: safeProfile.reminderTimes?.water || '15:00'
   });
 
   useEffect(() => {
-    setFormData(profile);
-    setWhyText(profile.pinnedWhy || '');
-    const converted = cmToFtIn(profile.heightCm);
+    setFormData(safeProfile);
+    setWhyText(safeProfile.pinnedWhy || '');
+    const converted = cmToFtIn(safeProfile.heightCm);
     setHeightFtInput(converted.ft);
     setHeightInInput(converted.in);
   }, [profile]);
@@ -301,7 +316,7 @@ export const MeTab: React.FC<MeTabProps> = ({
 
   // #6 Streak freeze logic (one "protect a missed day" per month)
   const currentMonthPrefix = formatLocalDate().slice(0, 7); // YYYY-MM
-  const freezesUsed = profile.streakFreezesUsed || [];
+  const freezesUsed = safeProfile.streakFreezesUsed || [];
   const usedThisMonth = freezesUsed.find(d => d.startsWith(currentMonthPrefix));
 
   const handleUseStreakFreeze = async () => {
@@ -314,7 +329,7 @@ export const MeTab: React.FC<MeTabProps> = ({
   };
 
   // #55 Theme mode toggle (dark | light | auto)
-  const currentThemeMode = formData.themeMode || profile.themeMode || 'dark';
+  const currentThemeMode = formData?.themeMode || safeProfile.themeMode || 'dark';
   const handleSetTheme = async (mode: 'dark' | 'light' | 'auto') => {
     try {
       localStorage.setItem('forkcount_theme_mode', mode);
@@ -535,12 +550,12 @@ export const MeTab: React.FC<MeTabProps> = ({
       setReferralMsg('You cannot use your own referral code.');
       return;
     }
-    const used = profile.usedReferrals || [];
+    const used = safeProfile.usedReferrals || [];
     if (used.includes(code)) {
       setReferralMsg('This referral code has already been used.');
       return;
     }
-    const nextXp = (profile.xp || stats.xp || 0) + 500;
+    const nextXp = (safeProfile.xp || stats.xp || 0) + 500;
     await updateUserProfile({
       xp: nextXp,
       referralCode: myReferralCode,
@@ -769,11 +784,11 @@ export const MeTab: React.FC<MeTabProps> = ({
               className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-teal-500"
             />
             <div className="flex justify-end gap-2">
-              {profile.pinnedWhy && (
+              {safeProfile.pinnedWhy && (
                 <button
                   type="button"
                   onClick={() => {
-                    setWhyText(profile.pinnedWhy || '');
+                    setWhyText(safeProfile.pinnedWhy || '');
                     setIsEditingWhy(false);
                   }}
                   className="px-2.5 py-1 text-xs text-zinc-400 hover:text-zinc-200"
@@ -792,7 +807,7 @@ export const MeTab: React.FC<MeTabProps> = ({
           </div>
         ) : (
           <p className="text-sm font-medium text-zinc-100 leading-relaxed">
-            &ldquo;{profile.pinnedWhy}&rdquo;
+            &ldquo;{safeProfile.pinnedWhy}&rdquo;
           </p>
         )}
       </div>

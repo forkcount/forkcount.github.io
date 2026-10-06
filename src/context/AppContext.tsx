@@ -536,7 +536,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         api.getHabits(date)
       ]);
       setDiaryItems(diaryRes.items || []);
-      setWaterGlasses(waterRes.glasses || 0);
+      setWaterGlasses(waterRes.glasses ?? (waterRes.ml ? Math.round(waterRes.ml / 250) : 0));
       setExercises(exerciseRes.items || []);
       setTodayHabit(habitsRes.habit || null);
       setAllHabits(habitsRes.allHabits || []);

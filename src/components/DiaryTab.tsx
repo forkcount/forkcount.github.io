@@ -774,7 +774,7 @@ export const DiaryTab: React.FC<DiaryTabProps> = ({ onNavigateToFitness }) => {
       )}
 
       {/* #32 "Why" pin at the top of the Diary every day */}
-      {profile.pinnedWhy && (
+      {profile?.pinnedWhy && (
         <div className="bg-zinc-900/90 border border-teal-500/30 rounded-2xl px-4 py-3 flex items-center gap-2.5">
           <Compass className="w-4 h-4 text-teal-400 shrink-0" />
           <p className="text-xs text-zinc-200 font-medium leading-relaxed">

@@ -46,7 +46,7 @@ export const Navigation: React.FC<NavigationProps> = ({ currentTab, onTabChange,
     updateUserProfile
   } = useApp();
 
-  const theme = profile.themeMode || 'dark';
+  const theme = profile?.themeMode || 'dark';
   const toggleTheme = async () => {
     const next = theme === 'dark' ? 'light' : 'dark';
     try {

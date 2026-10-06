@@ -895,7 +895,7 @@ class ApiService {
   }
 
   // Water
-  async getWater(date: string): Promise<{ date: string; ml: number }> {
+  async getWater(date: string): Promise<{ date: string; glasses: number; ml: number }> {
     const userId = this.token || 'guest';
     const entryId = `${userId}_${date}`;
     try {
@@ -903,26 +903,30 @@ class ApiService {
       if (snap.exists()) {
         const waterData = snap.data();
         console.log('WATER READ:', JSON.stringify(waterData, null, 2));
-        const ml = Number(waterData.ml || 0);
-        this.localCache.water[date] = ml;
+        const rawVal = waterData.glasses ?? waterData.ml ?? 0;
+        // If rawVal > 30 it's likely ml, convert to glasses; otherwise glasses
+        const glasses = Number(rawVal > 30 ? Math.round(rawVal / 250) : rawVal) || 0;
+        const ml = Number(waterData.ml || glasses * 250);
+        this.localCache.water[date] = glasses;
         saveLocalCache(this.localCache);
-        return { date, ml };
+        return { date, glasses, ml };
       }
     } catch {}
-    const ml = this.localCache.water[date] || 0;
-    return { date, ml };
+    const glasses = Number(this.localCache.water[date]) || 0;
+    return { date, glasses, ml: glasses * 250 };
   }
 
-  async setWater(date: string, ml: number): Promise<{ date: string; ml: number }> {
+  async setWater(date: string, glasses: number): Promise<{ date: string; glasses: number; ml: number }> {
     const userId = this.token || 'guest';
     const entryId = `${userId}_${date}`;
-    this.localCache.water[date] = ml;
+    this.localCache.water[date] = glasses;
     saveLocalCache(this.localCache);
 
     const waterData = {
       userId,
       date,
-      ml,
+      glasses,
+      ml: glasses * 250,
       updatedAt: Date.now()
     };
 
@@ -937,7 +941,7 @@ class ApiService {
       handleFirestoreError(err, OperationType.WRITE, `waterEntries/${entryId}`);
       this.notifySaveStatus('error');
     }
-    return { date, ml };
+    return { date, glasses, ml: glasses * 250 };
   }
 
   // Exercise
