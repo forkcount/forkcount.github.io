@@ -527,8 +527,8 @@ export const PlanTab: React.FC = () => {
 
       {/* WIZARD MODAL */}
       {isWizardOpen && (
-        <div className="bg-zinc-900/95 border border-zinc-800 rounded-2xl p-6 shadow-2xl space-y-5">
-          <div className="flex items-center justify-between text-xs text-zinc-500 border-b border-zinc-800 pb-3">
+        <div className="bg-zinc-900/95 border border-zinc-800 rounded-2xl p-5 sm:p-6 shadow-2xl flex flex-col max-h-[85dvh] overflow-hidden">
+          <div className="flex items-center justify-between text-xs text-zinc-500 border-b border-zinc-800 pb-3 shrink-0">
             <span>
               Step {wizardStep + 1} of {wizardQuestions.length}
             </span>
@@ -540,94 +540,96 @@ export const PlanTab: React.FC = () => {
             </button>
           </div>
 
-          <div className="space-y-2">
-            <h4 className="text-base font-semibold text-zinc-100">
-              {wizardQuestions[wizardStep].title}
-            </h4>
-            <p className="text-xs text-zinc-400">
-              {wizardQuestions[wizardStep].subtitle}
-            </p>
+          <div className="flex-1 overflow-y-auto pr-1 pb-4 my-3 space-y-4">
+            <div className="space-y-1">
+              <h4 className="text-base font-semibold text-zinc-100">
+                {wizardQuestions[wizardStep].title}
+              </h4>
+              <p className="text-xs text-zinc-400">
+                {wizardQuestions[wizardStep].subtitle}
+              </p>
+            </div>
+
+            <div className="min-h-[120px] flex flex-col justify-center">
+              {wizardQuestions[wizardStep].type === 'multi' && (
+                <div className="flex flex-wrap gap-2">
+                  {wizardQuestions[wizardStep].options?.map((opt: any) => {
+                    const isSel = (wizardQuestions[wizardStep].selected as string[]).includes(opt);
+                    return (
+                      <button
+                        key={opt}
+                        onClick={() => wizardQuestions[wizardStep].onChange(opt)}
+                        className={`px-3 py-2 rounded-xl text-xs font-medium border transition-colors ${
+                          isSel
+                            ? 'bg-teal-500/20 text-teal-300 border-teal-500/40'
+                            : 'bg-zinc-950 text-zinc-400 border-zinc-800 hover:border-zinc-700'
+                        }`}
+                      >
+                        {opt}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
+              {wizardQuestions[wizardStep].type === 'single' && (
+                <div className="grid grid-cols-2 gap-2">
+                  {wizardQuestions[wizardStep].options?.map((opt: any) => {
+                    const isSel = wizardQuestions[wizardStep].selected === opt;
+                    return (
+                      <button
+                        key={opt}
+                        onClick={() => wizardQuestions[wizardStep].onChange(opt)}
+                        className={`p-3 rounded-xl text-xs font-medium border transition-colors ${
+                          isSel
+                            ? 'bg-teal-500/20 text-teal-300 border-teal-500/40'
+                            : 'bg-zinc-950 text-zinc-400 border-zinc-800 hover:border-zinc-700'
+                        }`}
+                      >
+                        {opt}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
+              {wizardQuestions[wizardStep].type === 'number-chips' && (
+                <div className="flex gap-2">
+                  {wizardQuestions[wizardStep].options?.map((num: any) => {
+                    const isSel = wizardQuestions[wizardStep].selected === num;
+                    return (
+                      <button
+                        key={num}
+                        onClick={() => wizardQuestions[wizardStep].onChange(num)}
+                        className={`flex-1 py-3 rounded-xl text-sm font-bold font-mono border transition-colors ${
+                          isSel
+                            ? 'bg-teal-500 text-zinc-950 border-teal-400'
+                            : 'bg-zinc-950 text-zinc-400 border-zinc-800 hover:border-zinc-700'
+                        }`}
+                      >
+                        {num}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
+              {wizardQuestions[wizardStep].type === 'text' && (
+                <input
+                  type="text"
+                  value={wizardQuestions[wizardStep].value || ''}
+                  onChange={(e) => {
+                    const cb = wizardQuestions[wizardStep].onChange as (val: string) => void;
+                    cb(e.target.value);
+                  }}
+                  placeholder={wizardQuestions[wizardStep].placeholder}
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-teal-500"
+                />
+              )}
+            </div>
           </div>
 
-          <div className="min-h-[140px] flex flex-col justify-center">
-            {wizardQuestions[wizardStep].type === 'multi' && (
-              <div className="flex flex-wrap gap-2">
-                {wizardQuestions[wizardStep].options?.map((opt: any) => {
-                  const isSel = (wizardQuestions[wizardStep].selected as string[]).includes(opt);
-                  return (
-                    <button
-                      key={opt}
-                      onClick={() => wizardQuestions[wizardStep].onChange(opt)}
-                      className={`px-3 py-2 rounded-xl text-xs font-medium border transition-colors ${
-                        isSel
-                          ? 'bg-teal-500/20 text-teal-300 border-teal-500/40'
-                          : 'bg-zinc-950 text-zinc-400 border-zinc-800 hover:border-zinc-700'
-                      }`}
-                    >
-                      {opt}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-
-            {wizardQuestions[wizardStep].type === 'single' && (
-              <div className="grid grid-cols-2 gap-2">
-                {wizardQuestions[wizardStep].options?.map((opt: any) => {
-                  const isSel = wizardQuestions[wizardStep].selected === opt;
-                  return (
-                    <button
-                      key={opt}
-                      onClick={() => wizardQuestions[wizardStep].onChange(opt)}
-                      className={`p-3 rounded-xl text-xs font-medium border transition-colors ${
-                        isSel
-                          ? 'bg-teal-500/20 text-teal-300 border-teal-500/40'
-                          : 'bg-zinc-950 text-zinc-400 border-zinc-800 hover:border-zinc-700'
-                      }`}
-                    >
-                      {opt}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-
-            {wizardQuestions[wizardStep].type === 'number-chips' && (
-              <div className="flex gap-2">
-                {wizardQuestions[wizardStep].options?.map((num: any) => {
-                  const isSel = wizardQuestions[wizardStep].selected === num;
-                  return (
-                    <button
-                      key={num}
-                      onClick={() => wizardQuestions[wizardStep].onChange(num)}
-                      className={`flex-1 py-3 rounded-xl text-sm font-bold font-mono border transition-colors ${
-                        isSel
-                          ? 'bg-teal-500 text-zinc-950 border-teal-400'
-                          : 'bg-zinc-950 text-zinc-400 border-zinc-800 hover:border-zinc-700'
-                      }`}
-                    >
-                      {num}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-
-            {wizardQuestions[wizardStep].type === 'text' && (
-              <input
-                type="text"
-                value={wizardQuestions[wizardStep].value || ''}
-                onChange={(e) => {
-                  const cb = wizardQuestions[wizardStep].onChange as (val: string) => void;
-                  cb(e.target.value);
-                }}
-                placeholder={wizardQuestions[wizardStep].placeholder}
-                className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-teal-500"
-              />
-            )}
-          </div>
-
-          <div className="flex items-center justify-between pt-3 border-t border-zinc-800">
+          <div className="flex items-center justify-between pt-3 border-t border-zinc-800 shrink-0">
             {wizardStep > 0 ? (
               <button
                 onClick={() => setWizardStep(s => s - 1)}
