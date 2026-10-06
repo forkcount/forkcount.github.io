@@ -316,12 +316,12 @@ export const ReportsTab: React.FC = () => {
   };
 
   const fetchWeeklyInsights = async (forceRefresh = false) => {
-    const cacheKey = `caloriq_weekly_insights_${userId || 'guest'}`;
+    const cacheKey = `forkcount_weekly_insights_${userId || 'guest'}`;
     const weekKey = getCurrentWeekKey();
 
     if (!forceRefresh) {
       try {
-        const raw = localStorage.getItem(cacheKey);
+        const raw = localStorage.getItem(cacheKey) || localStorage.getItem(`caloriq_weekly_insights_${userId || 'guest'}`);
         if (raw) {
           const parsed = JSON.parse(raw);
           if (parsed && parsed.weekKey === weekKey) {
@@ -412,9 +412,9 @@ export const ReportsTab: React.FC = () => {
       fetchWeeklyInsights(false);
     } else {
       // Check if we already have a cached insight, otherwise show Not enough data yet.
-      const cacheKey = `caloriq_weekly_insights_${userId || 'guest'}`;
+      const cacheKey = `forkcount_weekly_insights_${userId || 'guest'}`;
       try {
-        const raw = localStorage.getItem(cacheKey);
+        const raw = localStorage.getItem(cacheKey) || localStorage.getItem(`caloriq_weekly_insights_${userId || 'guest'}`);
         if (raw) {
           const parsed = JSON.parse(raw);
           if (parsed && parsed.weekKey === getCurrentWeekKey() && parsed.bullets?.length > 0) {
@@ -1089,7 +1089,7 @@ export const ReportsTab: React.FC = () => {
                 ctx.strokeRect(18, 18, 604, 324);
                 ctx.fillStyle = '#2dd4bf';
                 ctx.font = 'bold 20px monospace';
-                ctx.fillText('CALORIQ PROGRESS SUMMARY', 44, 66);
+                ctx.fillText('FORKCOUNT PROGRESS SUMMARY', 44, 66);
                 ctx.fillStyle = '#f4f4f5';
                 ctx.font = 'bold 34px sans-serif';
                 ctx.fillText(`${profile.streakDays || 0} Day Streak`, 44, 125);
@@ -1109,7 +1109,7 @@ export const ReportsTab: React.FC = () => {
                 ctx.font = '14px monospace';
                 ctx.fillText(`Generated on ${formatLocalDate()}`, 44, 305);
                 const link = document.createElement('a');
-                link.download = `caloriq-progress-${formatLocalDate()}.png`;
+                link.download = `forkcount-progress-${formatLocalDate()}.png`;
                 link.href = canvas.toDataURL('image/png');
                 link.click();
               }

@@ -104,7 +104,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onAuthComplete }) => {
   const debouncedUsername = useDebounce(username, 400);
   const debouncedDraft = useDebounce(draft, 400);
   const [rememberMe, setRememberMe] = useState<boolean>(() => {
-    const saved = localStorage.getItem('caloriq_remember_me');
+    const saved = localStorage.getItem('forkcount_remember_me') || localStorage.getItem('caloriq_remember_me');
     return saved !== null ? saved === 'true' : true;
   });
   const [isLoading, setIsLoading] = useState(false);
@@ -135,7 +135,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onAuthComplete }) => {
 
   const draftStorageKey = useMemo(() => {
     const keyId = userId || username.trim().toLowerCase() || 'pending';
-    return `caloriq_signup_draft_${keyId}`;
+    return `forkcount_signup_draft_${keyId}`;
   }, [userId, username]);
 
   // Load saved draft if user is signed in, or check URL for password reset link
@@ -166,11 +166,16 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onAuthComplete }) => {
     const isSignupAlreadyDone =
       hasCompleteProfileStats(profile) ||
       Boolean(profile?.signupComplete) ||
-      (userId ? localStorage.getItem(`caloriq_signup_complete_${userId}`) === 'true' : false);
+      (userId
+        ? localStorage.getItem(`forkcount_signup_complete_${userId}`) === 'true' ||
+          localStorage.getItem(`caloriq_signup_complete_${userId}`) === 'true'
+        : false);
 
     if (!isGuest && !isSignupAlreadyDone) {
       try {
-        const raw = localStorage.getItem(`caloriq_signup_draft_${userId}`);
+        const raw =
+          localStorage.getItem(`forkcount_signup_draft_${userId}`) ||
+          localStorage.getItem(`caloriq_signup_draft_${userId}`);
         if (raw) {
           const parsed = JSON.parse(raw) as Partial<SignupDraft>;
           const merged: SignupDraft = { ...EMPTY_DRAFT, ...parsed };
@@ -206,7 +211,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onAuthComplete }) => {
     setDraft(updated);
     try {
       if (userId) {
-        localStorage.setItem(`caloriq_signup_draft_${userId}`, JSON.stringify(updated));
+        localStorage.setItem(`forkcount_signup_draft_${userId}`, JSON.stringify(updated));
       }
       localStorage.setItem(draftStorageKey, JSON.stringify(updated));
     } catch {
@@ -327,7 +332,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onAuthComplete }) => {
       }
     }
 
-    localStorage.setItem('caloriq_remember_me', String(rememberMe));
+    localStorage.setItem('forkcount_remember_me', String(rememberMe));
     setErrorMsg('');
     setIsLoading(true);
 
@@ -336,8 +341,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onAuthComplete }) => {
         const signupRes = await api.signup(cleanUsername, password, rememberMe, confirmPassword, honeypot);
         if (signupRes?.userId) {
           try {
-            localStorage.setItem('caloriq_signup_complete', 'true');
-            localStorage.setItem(`caloriq_signup_complete_${signupRes.userId}`, 'true');
+            localStorage.setItem('forkcount_signup_complete', 'true');
+            localStorage.setItem(`forkcount_signup_complete_${signupRes.userId}`, 'true');
           } catch {
             // ignore
           }
@@ -561,11 +566,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onAuthComplete }) => {
 
       const resolvedUserId = userId || api.getToken() || '';
       try {
-        localStorage.setItem('caloriq_signup_complete', 'true');
-        localStorage.setItem('caloriq_onboarding_complete_v1', 'true');
-        localStorage.setItem('caloriq_onboarding_completed', 'true');
+        localStorage.setItem('forkcount_signup_complete', 'true');
+        localStorage.setItem('forkcount_onboarding_complete_v1', 'true');
+        localStorage.setItem('forkcount_onboarding_completed', 'true');
         if (resolvedUserId) {
-          localStorage.setItem(`caloriq_signup_complete_${resolvedUserId}`, 'true');
+          localStorage.setItem(`forkcount_signup_complete_${resolvedUserId}`, 'true');
+          localStorage.removeItem(`forkcount_signup_draft_${resolvedUserId}`);
           localStorage.removeItem(`caloriq_signup_draft_${resolvedUserId}`);
         }
         localStorage.removeItem(draftStorageKey);
@@ -615,7 +621,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onAuthComplete }) => {
         onAuthComplete();
       }
     } catch (err) {
-      console.error('[Calory] Save and start failed:', err);
+      console.error('[ForkCount] Save and start failed:', err);
       setErrorMsg("Couldn't save your profile. Try again.");
       setSaveButtonPhase('idle');
     } finally {
@@ -682,7 +688,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onAuthComplete }) => {
             </div>
 
             <div className="space-y-3 text-xs text-zinc-300 leading-relaxed bg-zinc-950/80 border border-zinc-800 rounded-xl p-4">
-              <p>Calory needs a few details about your body to work.</p>
+              <p>ForkCount needs a few details about your body to work.</p>
               <p>
                 We use them for one thing: calculating your daily calorie target and how many calories you burn during exercise. That&apos;s the Mifflin-St Jeor formula — the standard way to work out how much energy your body needs at rest.
               </p>
@@ -812,7 +818,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onAuthComplete }) => {
                 )}
                 {draft.age !== '' && Number(draft.age) >= 13 && Number(draft.age) < 18 && (
                   <div className="p-2.5 bg-amber-950/40 border border-amber-800/50 rounded-xl text-xs text-amber-300">
-                    Use Calory with a parent or guardian.
+                    Use ForkCount with a parent or guardian.
                   </div>
                 )}
               </div>
@@ -1632,14 +1638,14 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onAuthComplete }) => {
                 <form onSubmit={handleCredentialsSubmit} className="space-y-4">
                   {/* #32 Hidden Honeypot Field */}
                   <div
-                    className="caloriq-honeypot absolute -left-[9999px] h-0 w-0 opacity-0 overflow-hidden pointer-events-none"
+                    className="forkcount-honeypot absolute -left-[9999px] h-0 w-0 opacity-0 overflow-hidden pointer-events-none"
                     aria-hidden="true"
                   >
-                    <label htmlFor="caloriq-company-hp" aria-hidden="true">
+                    <label htmlFor="forkcount-company-hp" aria-hidden="true">
                       Leave this field blank
                     </label>
                     <input
-                      id="caloriq-company-hp"
+                      id="forkcount-company-hp"
                       type="text"
                       name="company_website_hp"
                       tabIndex={-1}

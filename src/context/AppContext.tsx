@@ -119,7 +119,7 @@ interface AppContextType {
 const getSavedThemeMode = (): 'dark' | 'light' | 'auto' => {
   if (typeof window !== 'undefined') {
     try {
-      const saved = localStorage.getItem('caloriq_theme_mode');
+      const saved = localStorage.getItem('forkcount_theme_mode') || localStorage.getItem('caloriq_theme_mode');
       if (saved === 'dark' || saved === 'light' || saved === 'auto') {
         return saved;
       }
@@ -158,7 +158,9 @@ const AppContext = createContext<AppContextType | null>(null);
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const getTodayStr = () => formatLocalDate();
 
-  const hasDevDeviceOnInit = typeof localStorage !== 'undefined' && localStorage.getItem('calory_dev_device') !== null;
+  const hasDevDeviceOnInit =
+    typeof localStorage !== 'undefined' &&
+    (localStorage.getItem('forkcount_dev_device') !== null || localStorage.getItem('calory_dev_device') !== null);
   const [userId, setUserId] = useState<string>(() => (hasDevDeviceOnInit ? 'usr_545648c7-5e38-44fc-adc5-373e0b3e5e18' : ''));
   const [userEmail, setUserEmail] = useState<string | undefined>(() => (hasDevDeviceOnInit ? 'housefly' : undefined));
   const [isGuest, setIsGuest] = useState<boolean>(() => (hasDevDeviceOnInit ? false : true));
@@ -167,20 +169,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Guest 24-hour clock & 1-call AI limit
   const [guestStartedAt, setGuestStartedAt] = useState<number>(() => {
-    const raw = localStorage.getItem('caloriq_guest_started_at');
+    const raw = localStorage.getItem('forkcount_guest_started_at') || localStorage.getItem('caloriq_guest_started_at');
     if (raw) {
       const parsed = Number(raw);
       if (!isNaN(parsed) && parsed > 0) return parsed;
     }
     const now = Date.now();
-    localStorage.setItem('caloriq_guest_started_at', String(now));
+    localStorage.setItem('forkcount_guest_started_at', String(now));
     return now;
   });
   const [guestRemainingMs, setGuestRemainingMs] = useState<number>(() =>
     Math.max(0, 24 * 60 * 60 * 1000 - (Date.now() - guestStartedAt))
   );
   const [guestAiUsed, setGuestAiUsed] = useState<boolean>(() =>
-    localStorage.getItem('caloriq_guest_ai_used') === 'true'
+    localStorage.getItem('forkcount_guest_ai_used') === 'true' || localStorage.getItem('caloriq_guest_ai_used') === 'true'
   );
   const [isGuestLockOpen, setIsGuestLockOpen] = useState<boolean>(false);
 
@@ -202,16 +204,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Fasting timer (#13)
   const [fastingPreset, setFastingPreset] = useState<FastingPreset>(() => {
-    return (localStorage.getItem('caloriq_fast_preset') as FastingPreset) || '16:8';
+    return (
+      (localStorage.getItem('forkcount_fast_preset') as FastingPreset) ||
+      (localStorage.getItem('caloriq_fast_preset') as FastingPreset) ||
+      '16:8'
+    );
   });
   const [fastingStartedAt, setFastingStartedAt] = useState<number | null>(() => {
-    const raw = localStorage.getItem('caloriq_fast_started_at');
+    const raw = localStorage.getItem('forkcount_fast_started_at') || localStorage.getItem('caloriq_fast_started_at');
     return raw ? Number(raw) : null;
   });
   const [fastingRemainingSec, setFastingRemainingSec] = useState<number>(0);
   const [completedFasts, setCompletedFasts] = useState<Record<string, string[]>>(() => {
     try {
-      const raw = localStorage.getItem('caloriq_completed_fasts');
+      const raw = localStorage.getItem('forkcount_completed_fasts') || localStorage.getItem('caloriq_completed_fasts');
       return raw ? JSON.parse(raw) : {};
     } catch {
       return {};
@@ -244,7 +250,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return false;
     }
     setGuestAiUsed(true);
-    localStorage.setItem('caloriq_guest_ai_used', 'true');
+    localStorage.setItem('forkcount_guest_ai_used', 'true');
     return true;
   }, [isGuest, guestAiUsed, openGuestLock]);
 
@@ -260,10 +266,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const startFasting = (preset?: FastingPreset) => {
     const chosen = preset || fastingPreset;
     setFastingPreset(chosen);
-    localStorage.setItem('caloriq_fast_preset', chosen);
+    localStorage.setItem('forkcount_fast_preset', chosen);
     const now = Date.now();
     setFastingStartedAt(now);
-    localStorage.setItem('caloriq_fast_started_at', String(now));
+    localStorage.setItem('forkcount_fast_started_at', String(now));
   };
 
   const stopFasting = useCallback((markComplete: boolean = false) => {
@@ -274,13 +280,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const badgeLabel = `${fastingPreset} Fast Completed`;
         const nextList = list.includes(badgeLabel) ? list : [...list, badgeLabel];
         const next = { ...prev, [dStr]: nextList };
-        localStorage.setItem('caloriq_completed_fasts', JSON.stringify(next));
+        localStorage.setItem('forkcount_completed_fasts', JSON.stringify(next));
         return next;
       });
     }
     setFastingStartedAt(null);
     setFastingRemainingSec(0);
-    localStorage.removeItem('caloriq_fast_started_at');
+    localStorage.removeItem('forkcount_fast_started_at');
   }, [fastingPreset, fastingStartedAt]);
 
   // Guest 24h live countdown & Fasting live countdown
@@ -338,7 +344,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // #24 Remember last meal
   const [lastSelectedMeal, setLastSelectedMealState] = useState<MealType>(() => {
-    const saved = localStorage.getItem('caloriq_last_meal');
+    const saved = localStorage.getItem('forkcount_last_meal') || localStorage.getItem('caloriq_last_meal');
     if (saved === 'breakfast' || saved === 'lunch' || saved === 'dinner' || saved === 'snack') {
       return saved;
     }
@@ -346,7 +352,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   });
   const setLastSelectedMeal = useCallback((meal: MealType) => {
     setLastSelectedMealState(meal);
-    localStorage.setItem('caloriq_last_meal', meal);
+    localStorage.setItem('forkcount_last_meal', meal);
   }, []);
 
   const [isAddFoodOpen, setIsAddFoodOpen] = useState<boolean>(false);
@@ -365,7 +371,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   useEffect(() => {
     const mode = profile.themeMode || getSavedThemeMode();
     try {
-      localStorage.setItem('caloriq_theme_mode', mode);
+      localStorage.setItem('forkcount_theme_mode', mode);
     } catch {
       // ignore
     }
@@ -440,7 +446,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, []);
 
   useEffect(() => {
-    if (isGuest || isDev || localStorage.getItem('calory_dev_device') !== null) {
+    if (
+      isGuest ||
+      isDev ||
+      localStorage.getItem('forkcount_dev_device') !== null ||
+      localStorage.getItem('calory_dev_device') !== null
+    ) {
       setIsSessionExpiryWarningOpen(false);
       return;
     }
@@ -721,6 +732,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const addWeightLog = async (weightKg: number, date: string = activeDate): Promise<void> => {
     const hasCompletedOnboarding =
       Boolean(profile.signupComplete) ||
+      localStorage.getItem('forkcount_signup_complete') === 'true' ||
       localStorage.getItem('caloriq_signup_complete') === 'true';
     if (isGuest && !hasCompletedOnboarding) {
       openGuestLock();
@@ -743,9 +755,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const delta = Math.abs(weightKg - baseline);
         const milestones = [25, 10, 5, 1];
         for (const m of milestones) {
-          const seenKey = `caloriq_milestone_${m}kg`;
-          if (delta >= m && !localStorage.getItem(seenKey)) {
+          const seenKey = `forkcount_milestone_${m}kg`;
+          const oldSeenKey = `caloriq_milestone_${m}kg`;
+          if (delta >= m && !localStorage.getItem(seenKey) && !localStorage.getItem(oldSeenKey)) {
             localStorage.setItem(seenKey, 'true');
+            localStorage.setItem(oldSeenKey, 'true');
             setMilestoneCelebration(m);
             break;
           }
@@ -893,8 +907,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       // ignore
     }
     const now = Date.now();
-    localStorage.setItem('caloriq_guest_started_at', String(now));
-    localStorage.setItem('caloriq_guest_ai_used', 'false');
+    localStorage.setItem('forkcount_guest_started_at', String(now));
+    localStorage.setItem('forkcount_guest_ai_used', 'false');
     setGuestStartedAt(now);
     setGuestRemainingMs(24 * 60 * 60 * 1000);
     setGuestAiUsed(false);

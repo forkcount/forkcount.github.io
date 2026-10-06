@@ -27,20 +27,20 @@ export const CookiesPage: React.FC<PageNavProps> = ({
   onOpenPress
 }) => {
   const [ccpaOptOut, setCcpaOptOut] = useState<boolean>(() => {
-    return typeof window !== 'undefined' && localStorage.getItem('caloriq_ccpa_do_not_sell') === 'true';
+    return typeof window !== 'undefined' && (localStorage.getItem('forkcount_ccpa_do_not_sell') === 'true' || localStorage.getItem('caloriq_ccpa_do_not_sell') === 'true');
   });
 
   useEffect(() => {
-    document.title = 'Cookies & Local Storage — Caloriq';
+    document.title = 'Cookies & Local Storage — ForkCount';
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }, []);
 
   const handleToggleCcpa = () => {
     const next = !ccpaOptOut;
     setCcpaOptOut(next);
-    localStorage.setItem('caloriq_ccpa_do_not_sell', String(next));
+    localStorage.setItem('forkcount_ccpa_do_not_sell', String(next));
     if (next) {
-      localStorage.setItem('caloriq_cookie_consent', 'declined');
+      localStorage.setItem('forkcount_cookie_consent', 'declined');
       api.logCookieConsent('declined').catch(() => {});
     }
   };
@@ -61,7 +61,7 @@ export const CookiesPage: React.FC<PageNavProps> = ({
             <ArrowLeft className="w-4 h-4 text-teal-400" />
             <span>Back</span>
           </button>
-          <span className="text-sm font-semibold text-zinc-100">Caloriq</span>
+          <span className="text-sm font-semibold text-zinc-100">ForkCount</span>
         </div>
 
         <main id="main-cookies" className="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-6 sm:p-10 space-y-8">
@@ -70,14 +70,14 @@ export const CookiesPage: React.FC<PageNavProps> = ({
               Cookies &amp; Local Storage Policy
             </h1>
             <p className="text-xs text-zinc-300">
-              Caloriq does not use third-party advertising cookies or cross-site tracking cookies.
+              ForkCount does not use third-party advertising cookies or cross-site tracking cookies.
             </p>
           </header>
 
           <section className="space-y-3">
             <h2 className="text-lg font-semibold text-zinc-100">What we store in your browser and why</h2>
             <p className="text-sm text-zinc-300 leading-relaxed">
-              Instead of tracking cookies, Caloriq uses your browser&apos;s standard <code className="text-teal-300 font-mono text-xs">localStorage</code> and <code className="text-teal-300 font-mono text-xs">sessionStorage</code> so the app works reliably and offline:
+              Instead of tracking cookies, ForkCount uses your browser&apos;s standard <code className="text-teal-300 font-mono text-xs">localStorage</code> and <code className="text-teal-300 font-mono text-xs">sessionStorage</code> so the app works reliably and offline:
             </p>
             <div className="overflow-x-auto border border-zinc-800 rounded-xl">
               <table className="w-full text-left text-xs">
@@ -90,22 +90,22 @@ export const CookiesPage: React.FC<PageNavProps> = ({
                 </thead>
                 <tbody className="divide-y divide-zinc-800 text-zinc-300">
                   <tr>
-                    <td className="p-3 font-mono text-teal-300">caloriq_auth_token</td>
+                    <td className="p-3 font-mono text-teal-300">forkcount_session_token</td>
                     <td className="p-3">Keeps you signed in across page reloads.</td>
                     <td className="p-3">Strictly Necessary</td>
                   </tr>
                   <tr>
-                    <td className="p-3 font-mono text-teal-300">caloriq_local_*</td>
+                    <td className="p-3 font-mono text-teal-300">forkcount_standalone_db_*</td>
                     <td className="p-3">Caches your diary, water, and exercise entries so the app works offline.</td>
                     <td className="p-3">Strictly Necessary</td>
                   </tr>
                   <tr>
-                    <td className="p-3 font-mono text-teal-300">caloriq_locale</td>
+                    <td className="p-3 font-mono text-teal-300">forkcount_locale</td>
                     <td className="p-3">Remembers your chosen language (English, Español, Français, Deutsch).</td>
                     <td className="p-3">Functional</td>
                   </tr>
                   <tr>
-                    <td className="p-3 font-mono text-teal-300">caloriq_cookie_consent</td>
+                    <td className="p-3 font-mono text-teal-300">forkcount_cookie_consent</td>
                     <td className="p-3">Remembers whether you accepted or declined optional analytics.</td>
                     <td className="p-3">Compliance</td>
                   </tr>
@@ -123,7 +123,7 @@ export const CookiesPage: React.FC<PageNavProps> = ({
               </h2>
             </div>
             <p className="text-xs text-zinc-300 leading-relaxed">
-              Caloriq never sells, rents, or trades your personal data or health records to any third party or data broker. You can also record an explicit CCPA opt-out preference below:
+              ForkCount never sells, rents, or trades your personal data or health records to any third party or data broker. You can also record an explicit CCPA opt-out preference below:
             </p>
             <button
               type="button"
@@ -156,16 +156,16 @@ export const CookiesPage: React.FC<PageNavProps> = ({
 // ============================================================================
 const FAQ_ITEMS = [
   {
-    q: 'What is Caloriq?',
-    a: 'Caloriq is a calorie, macro, water, and exercise tracking application. It calculates your daily energy targets from your own body statistics using the Mifflin-St Jeor formula and lets you log meals via plain-English AI text, barcode scan, saved recipes, or manual entry.'
+    q: 'What is ForkCount?',
+    a: 'ForkCount is a calorie, macro, water, and exercise tracking application. It calculates your daily energy targets from your own body statistics using the Mifflin-St Jeor formula and lets you log meals via plain-English AI text, barcode scan, saved recipes, or manual entry.'
   },
   {
     q: 'Is it free?',
-    a: 'Yes. Caloriq is completely free to use. There is no credit card required, no paywall, and no trial subscription that automatically renews.'
+    a: 'Yes. ForkCount is completely free to use. There is no credit card required, no paywall, and no trial subscription that automatically renews.'
   },
   {
     q: 'Is it medical?',
-    a: 'No. Caloriq is a self-guided nutrition and activity tracking tool, not a medical device or healthcare provider. It does not diagnose, treat, or prescribe. Always consult a qualified physician before changing your diet or exercise program.'
+    a: 'No. ForkCount is a self-guided nutrition and activity tracking tool, not a medical device or healthcare provider. It does not diagnose, treat, or prescribe. Always consult a qualified physician before changing your diet or exercise program.'
   },
   {
     q: 'How do I log food?',
@@ -195,7 +195,7 @@ export const FaqPage: React.FC<PageNavProps> = ({
   onOpenPress
 }) => {
   useEffect(() => {
-    document.title = 'Frequently Asked Questions — Caloriq';
+    document.title = 'Frequently Asked Questions — ForkCount';
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }, []);
 
@@ -215,7 +215,7 @@ export const FaqPage: React.FC<PageNavProps> = ({
             <ArrowLeft className="w-4 h-4 text-teal-400" />
             <span>Back</span>
           </button>
-          <span className="text-sm font-semibold text-zinc-100">Caloriq FAQ</span>
+          <span className="text-sm font-semibold text-zinc-100">ForkCount FAQ</span>
         </div>
 
         <main id="main-faq" className="space-y-4">
@@ -225,7 +225,7 @@ export const FaqPage: React.FC<PageNavProps> = ({
               <h1 className="text-2xl font-bold text-zinc-100">Frequently Asked Questions</h1>
             </div>
             <p className="text-xs text-zinc-300">
-              Plain-English answers about how Caloriq works, privacy, and account management.
+              Plain-English answers about how ForkCount works, privacy, and account management.
             </p>
           </div>
 
@@ -276,7 +276,7 @@ export const ContactPage: React.FC<PageNavProps> = ({
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    document.title = 'Contact — Caloriq';
+    document.title = 'Contact — ForkCount';
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }, []);
 
@@ -290,9 +290,9 @@ export const ContactPage: React.FC<PageNavProps> = ({
     setIsSubmitting(true);
     try {
       await api.submitContactForm({
-        name: name.trim() || 'Caloriq User',
+        name: name.trim() || 'ForkCount User',
         email: email.trim(),
-        subject: subject.trim() || 'Caloriq Support Inquiry',
+        subject: subject.trim() || 'ForkCount Support Inquiry',
         message: message.trim()
       });
       setSubmitted(true);
@@ -323,7 +323,7 @@ export const ContactPage: React.FC<PageNavProps> = ({
             <ArrowLeft className="w-4 h-4 text-teal-400" />
             <span>Back</span>
           </button>
-          <span className="text-sm font-semibold text-zinc-100">Contact Caloriq</span>
+          <span className="text-sm font-semibold text-zinc-100">Contact ForkCount</span>
         </div>
 
         <main id="main-contact" className="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-6 sm:p-8 space-y-6">
@@ -453,13 +453,13 @@ export const ContactPage: React.FC<PageNavProps> = ({
 // #64 /press Page — Logo files, 50/100/200-word descriptions, journalist contact
 // ============================================================================
 const PRESS_50_WORDS =
-  'Caloriq is a free web and mobile calorie, macro, water, and exercise tracker built on transparent physiology math. Users calculate personalized daily targets using the Mifflin-St Jeor formula and log meals in plain English, by barcode, or offline—with zero paywalls, no credit card required, and no tracking cookies.';
+  'ForkCount is a free web and mobile calorie, macro, water, and exercise tracker built on transparent physiology math. Users calculate personalized daily targets using the Mifflin-St Jeor formula and log meals in plain English, by barcode, or offline—with zero paywalls, no credit card required, and no tracking cookies.';
 
 const PRESS_100_WORDS =
-  'Caloriq is a free, privacy-first calorie and macro tracking application designed for everyday clarity. Instead of hiding core features behind subscriptions, Caloriq gives every user personalized BMR and maintenance calculations using the Mifflin-St Jeor equation, plain-English AI food and workout deciphering, USDA packaged food lookup, barcode scanning, hydration tracking, and weekly progress reports. Built as an installable Progressive Web App, Caloriq works offline for daily food, water, and exercise logging while syncing across devices when online. Caloriq collects no advertising cookies, never sells personal health data, and lets users export or permanently delete their account data in one tap.';
+  'ForkCount is a free, privacy-first calorie and macro tracking application designed for everyday clarity. Instead of hiding core features behind subscriptions, ForkCount gives every user personalized BMR and maintenance calculations using the Mifflin-St Jeor equation, plain-English AI food and workout deciphering, USDA packaged food lookup, barcode scanning, hydration tracking, and weekly progress reports. Built as an installable Progressive Web App, ForkCount works offline for daily food, water, and exercise logging while syncing across devices when online. ForkCount collects no advertising cookies, never sells personal health data, and lets users export or permanently delete their account data in one tap.';
 
 const PRESS_200_WORDS =
-  'Caloriq is an independent, full-featured nutrition and activity tracker built to make evidence-based weight management accessible without subscriptions, dark patterns, or data brokers. Most commercial nutrition apps lock macro breakdowns, barcode scanners, or custom recipes behind recurring paywalls while monetizing user health profiles. Caloriq takes the opposite approach: every feature is free from day one, with no credit card and no trial period.\n\nWhen a user joins Caloriq, the app calculates resting energy expenditure (BMR), total daily energy expenditure (TDEE), and macro targets from their own physiology using the clinical Mifflin-St Jeor formula. Logging a meal takes seconds: users can type ingredients in natural language (such as "60g dried prunes, oatmeal 150g, milk 200g"), scan a barcode, search the USDA FoodData Central catalog, or build reusable meal templates. An integrated nutritional analyzer evaluates meal size, protein density, and fiber to offer practical, meal-appropriate suggestions.\n\nEngineered as a fast Progressive Web App with offline-first local storage and Google Firebase synchronization, Caloriq runs on iOS, Android, and desktop browsers. Journalists and reviewers can explore Caloriq immediately using the instant Demo Mode on the landing page or contact the developer directly for interviews and high-resolution assets.';
+  'ForkCount is an independent, full-featured nutrition and activity tracker built to make evidence-based weight management accessible without subscriptions, dark patterns, or data brokers. Most commercial nutrition apps lock macro breakdowns, barcode scanners, or custom recipes behind recurring paywalls while monetizing user health profiles. ForkCount takes the opposite approach: every feature is free from day one, with no credit card and no trial period.\n\nWhen a user joins ForkCount, the app calculates resting energy expenditure (BMR), total daily energy expenditure (TDEE), and macro targets from their own physiology using the clinical Mifflin-St Jeor formula. Logging a meal takes seconds: users can type ingredients in natural language (such as "60g dried prunes, oatmeal 150g, milk 200g"), scan a barcode, search the USDA FoodData Central catalog, or build reusable meal templates. An integrated nutritional analyzer evaluates meal size, protein density, and fiber to offer practical, meal-appropriate suggestions.\n\nEngineered as a fast Progressive Web App with offline-first local storage and Google Firebase synchronization, ForkCount runs on iOS, Android, and desktop browsers. Journalists and reviewers can explore ForkCount immediately using the instant Demo Mode on the landing page or contact the developer directly for interviews and high-resolution assets.';
 
 export const PressPage: React.FC<PageNavProps> = ({
   onBack,
@@ -473,7 +473,7 @@ export const PressPage: React.FC<PageNavProps> = ({
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
   useEffect(() => {
-    document.title = 'Press Kit — Caloriq';
+    document.title = 'Press Kit — ForkCount';
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }, []);
 
@@ -499,14 +499,14 @@ export const PressPage: React.FC<PageNavProps> = ({
             <ArrowLeft className="w-4 h-4 text-teal-400" />
             <span>Back</span>
           </button>
-          <span className="text-sm font-semibold text-zinc-100">Caloriq Press Kit</span>
+          <span className="text-sm font-semibold text-zinc-100">ForkCount Press Kit</span>
         </div>
 
         <main id="main-press" className="space-y-6">
           <section className="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-6 space-y-3">
             <h1 className="text-2xl font-bold text-zinc-100">Press &amp; Media Kit</h1>
             <p className="text-sm text-zinc-300 leading-relaxed">
-              Official brand assets, boilerplate descriptions, and media contact for journalists covering Caloriq.
+              Official brand assets, boilerplate descriptions, and media contact for journalists covering ForkCount.
             </p>
             <div className="p-3.5 rounded-xl bg-zinc-950 border border-zinc-800 text-xs text-zinc-300 flex flex-wrap items-center justify-between gap-2">
               <span>
@@ -525,10 +525,10 @@ export const PressPage: React.FC<PageNavProps> = ({
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <a
                 href="/icon.svg"
-                download="caloriq-logo.svg"
+                download="forkcount-logo.svg"
                 className="p-4 rounded-xl bg-zinc-950 border border-zinc-800 hover:border-teal-500/40 flex flex-col items-center gap-3 text-xs text-zinc-200 transition-colors"
               >
-                <img src="/icon.svg" alt="Caloriq vector logo" width="64" height="64" className="w-16 h-16 rounded-xl" />
+                <img src="/icon.svg" alt="ForkCount vector logo" width="64" height="64" className="w-16 h-16 rounded-xl" />
                 <span className="font-semibold">Vector Logo (SVG)</span>
                 <span className="inline-flex items-center gap-1 text-teal-400 text-[11px]">
                   <Download className="w-3.5 h-3.5" /> Download SVG
@@ -537,10 +537,10 @@ export const PressPage: React.FC<PageNavProps> = ({
 
               <a
                 href="/pwa-512x512.png"
-                download="caloriq-icon-512.png"
+                download="forkcount-icon-512.png"
                 className="p-4 rounded-xl bg-zinc-950 border border-zinc-800 hover:border-teal-500/40 flex flex-col items-center gap-3 text-xs text-zinc-200 transition-colors"
               >
-                <img src="/pwa-512x512.png" alt="Caloriq 512x512 app icon" width="64" height="64" className="w-16 h-16 rounded-xl" />
+                <img src="/pwa-512x512.png" alt="ForkCount 512x512 app icon" width="64" height="64" className="w-16 h-16 rounded-xl" />
                 <span className="font-semibold">App Icon (512x512 PNG)</span>
                 <span className="inline-flex items-center gap-1 text-teal-400 text-[11px]">
                   <Download className="w-3.5 h-3.5" /> Download PNG
@@ -549,10 +549,10 @@ export const PressPage: React.FC<PageNavProps> = ({
 
               <a
                 href="/og-image.png"
-                download="caloriq-og-1200x630.png"
+                download="forkcount-og-1200x630.png"
                 className="p-4 rounded-xl bg-zinc-950 border border-zinc-800 hover:border-teal-500/40 flex flex-col items-center gap-3 text-xs text-zinc-200 transition-colors"
               >
-                <img src="/og-image.png" alt="Caloriq social preview card" width="120" height="63" className="w-28 h-16 object-cover rounded-lg border border-zinc-800" />
+                <img src="/og-image.png" alt="ForkCount social preview card" width="120" height="63" className="w-28 h-16 object-cover rounded-lg border border-zinc-800" />
                 <span className="font-semibold">Share Banner (1200x630)</span>
                 <span className="inline-flex items-center gap-1 text-teal-400 text-[11px]">
                   <Download className="w-3.5 h-3.5" /> Download PNG
@@ -612,7 +612,7 @@ export const NotFoundPage: React.FC<{
   onGoToLanding?: () => void;
 }> = ({ onBackToDiary, onGoToDiary, onGoToLanding }) => {
   useEffect(() => {
-    document.title = 'Page Not Found — Caloriq';
+    document.title = 'Page Not Found — ForkCount';
   }, []);
 
   return (

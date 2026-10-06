@@ -50,7 +50,7 @@ export const Navigation: React.FC<NavigationProps> = ({ currentTab, onTabChange,
   const toggleTheme = async () => {
     const next = theme === 'dark' ? 'light' : 'dark';
     try {
-      localStorage.setItem('caloriq_theme_mode', next);
+      localStorage.setItem('forkcount_theme_mode', next);
     } catch {}
     await updateUserProfile({ themeMode: next });
   };
@@ -73,8 +73,8 @@ export const Navigation: React.FC<NavigationProps> = ({ currentTab, onTabChange,
         setIsDevToolsOpen(true);
       }
     };
-    window.addEventListener('caloriq-open-dev-console', handleOpenDev);
-    return () => window.removeEventListener('caloriq-open-dev-console', handleOpenDev);
+    window.addEventListener('forkcount-open-dev-console', handleOpenDev);
+    return () => window.removeEventListener('forkcount-open-dev-console', handleOpenDev);
   }, [isDevAccount]);
 
   const { minDate, maxDate } = getDateBounds();
@@ -137,12 +137,12 @@ export const Navigation: React.FC<NavigationProps> = ({ currentTab, onTabChange,
           <div className="flex items-center gap-2">
             <button
               onClick={onOpenDescription}
-              title="View Calory description and overview"
-              aria-label="View Calory description and overview"
+              title="View ForkCount description and overview"
+              aria-label="View ForkCount description and overview"
               className="font-bold text-base tracking-tight text-zinc-100 flex items-center gap-1.5 hover:text-teal-400 transition-colors cursor-pointer"
             >
               <span className="w-2 h-2 rounded-full bg-teal-400 inline-block"></span>
-              <span>Calory</span>
+              <span>ForkCount</span>
             </button>
             {/* #19 Auto-save indicator dot */}
             <span

@@ -93,7 +93,7 @@ export const SocialAccountabilitySection: React.FC = () => {
     // Header
     ctx.fillStyle = '#14b8a6';
     ctx.font = 'bold 16px Inter, sans-serif';
-    ctx.fillText('CALORIQ · WEEKLY PROGRESS SNAPSHOT', 54, 72);
+    ctx.fillText('FORKCOUNT · WEEKLY PROGRESS SNAPSHOT', 54, 72);
 
     ctx.fillStyle = '#f4f4f5';
     ctx.font = 'bold 32px Inter, sans-serif';
@@ -175,7 +175,7 @@ export const SocialAccountabilitySection: React.FC = () => {
     setTimeout(() => setStatusMsg(null), 2500);
   };
 
-  // #46 Share a recipe to another Caloriq user
+  // #46 Share a recipe to another ForkCount user
   const handleShareRecipe = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!recipeRecipient.trim() || savedRecipes.length === 0) return;
@@ -241,7 +241,7 @@ export const SocialAccountabilitySection: React.FC = () => {
             />
             <a
               href={cardPreviewUrl}
-              download={`caloriq-progress-${formatLocalDate()}.png`}
+              download={`forkcount-progress-${formatLocalDate()}.png`}
               className="w-full py-2 bg-teal-500 text-zinc-950 font-bold rounded-xl text-xs flex items-center justify-center gap-1.5"
             >
               <Download className="w-3.5 h-3.5" />

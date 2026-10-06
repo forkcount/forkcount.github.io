@@ -17,8 +17,8 @@ const ALLOWED_EVENTS = new Set<AllowedAnalyticsEvent>([
   'first_week_completed'
 ]);
 
-const FIRST_EVENT_PREFIX = 'caloriq_analytics_once_';
-const CONSENT_KEY = 'caloriq_cookie_consent';
+const FIRST_EVENT_PREFIX = 'forkcount_analytics_once_';
+const CONSENT_KEY = 'forkcount_cookie_consent';
 
 export interface AnalyticsSummaryResponse {
   pageviews: number;
@@ -33,7 +33,7 @@ export interface AnalyticsSummaryResponse {
 
 export function hasAnalyticsConsent(): boolean {
   if (typeof window === 'undefined') return false;
-  const consent = localStorage.getItem(CONSENT_KEY);
+  const consent = localStorage.getItem(CONSENT_KEY) || localStorage.getItem('caloriq_cookie_consent');
   // If user explicitly declined in cookie banner, do not send analytics
   if (consent === 'declined') return false;
   return true;
@@ -53,7 +53,8 @@ export async function trackPrivacyEvent(
 
   if (oncePerDevice && typeof window !== 'undefined') {
     const key = `${FIRST_EVENT_PREFIX}${event}`;
-    if (localStorage.getItem(key) === '1') return;
+    const oldKey = `caloriq_analytics_once_${event}`;
+    if (localStorage.getItem(key) === '1' || localStorage.getItem(oldKey) === '1') return;
     localStorage.setItem(key, '1');
   }
 
@@ -85,8 +86,8 @@ export function trackEventOnce(event: AllowedAnalyticsEvent, path?: string): voi
 
 export function checkDay7Retention(): void {
   if (typeof window === 'undefined') return;
-  const firstSeenKey = 'caloriq_first_seen_at';
-  const raw = localStorage.getItem(firstSeenKey);
+  const firstSeenKey = 'forkcount_first_seen_at';
+  const raw = localStorage.getItem(firstSeenKey) || localStorage.getItem('caloriq_first_seen_at');
   if (!raw) {
     localStorage.setItem(firstSeenKey, String(Date.now()));
     return;

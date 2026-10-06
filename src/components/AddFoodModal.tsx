@@ -128,7 +128,7 @@ export const AddFoodModal: React.FC<AddFoodModalProps> = ({ isOpen, onClose, def
 
   // Smart Food Decipherer State (In-Code AI) — #16 Draft save for AI logs + #15 Debounce
   const [smartFoodText, setSmartFoodText] = useState(() => {
-    return localStorage.getItem('caloriq_draft_smart_food') || '';
+    return localStorage.getItem('forkcount_draft_smart_food') || localStorage.getItem('caloriq_draft_smart_food') || '';
   });
   const debouncedSmartFoodText = useDebounce(smartFoodText, 400);
   const [gramOverrides, setGramOverrides] = useState<Record<number, number>>({});
@@ -137,7 +137,7 @@ export const AddFoodModal: React.FC<AddFoodModalProps> = ({ isOpen, onClose, def
   const [confirmedOver5000Kcal, setConfirmedOver5000Kcal] = useState<boolean>(false);
 
   useEffect(() => {
-    localStorage.setItem('caloriq_draft_smart_food', smartFoodText);
+    localStorage.setItem('forkcount_draft_smart_food', smartFoodText);
   }, [smartFoodText]);
 
   useEffect(() => {
@@ -262,6 +262,7 @@ export const AddFoodModal: React.FC<AddFoodModalProps> = ({ isOpen, onClose, def
 
       if (saved) {
         setSmartFoodText('');
+        localStorage.removeItem('forkcount_draft_smart_food');
         localStorage.removeItem('caloriq_draft_smart_food');
         setGramOverrides({});
         setConfirmedOver5kgIndices({});
@@ -316,13 +317,13 @@ export const AddFoodModal: React.FC<AddFoodModalProps> = ({ isOpen, onClose, def
 
   // #3 Voice Log (#16 draft save)
   const [voiceTranscript, setVoiceTranscript] = useState(() => {
-    return localStorage.getItem('caloriq_draft_voice_food') || '';
+    return localStorage.getItem('forkcount_draft_voice_food') || localStorage.getItem('caloriq_draft_voice_food') || '';
   });
   const [isListening, setIsListening] = useState(false);
   const [voiceResult, setVoiceResult] = useState<any | null>(null);
 
   useEffect(() => {
-    localStorage.setItem('caloriq_draft_voice_food', voiceTranscript);
+    localStorage.setItem('forkcount_draft_voice_food', voiceTranscript);
   }, [voiceTranscript]);
 
   // #9 Plate Photo
@@ -717,6 +718,7 @@ export const AddFoodModal: React.FC<AddFoodModalProps> = ({ isOpen, onClose, def
     });
     if (saved && payload.source === 'voice') {
       setVoiceTranscript('');
+      localStorage.removeItem('forkcount_draft_voice_food');
       localStorage.removeItem('caloriq_draft_voice_food');
     }
   };
@@ -1517,7 +1519,7 @@ export const AddFoodModal: React.FC<AddFoodModalProps> = ({ isOpen, onClose, def
                   className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-teal-500"
                 />
                 <span className="text-[10px] text-zinc-500 mt-1 block">
-                  Caloriq saves your recipes — typing this name in the future autofills ingredients.
+                  ForkCount saves your recipes — typing this name in the future autofills ingredients.
                 </span>
               </div>
 

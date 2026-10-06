@@ -20,17 +20,17 @@ export const PrivacyPolicyPage: React.FC<PrivacyPolicyPageProps> = ({
         <div className="max-w-3xl mx-auto flex items-center justify-between gap-4">
           <div className="flex items-center gap-2">
             <span className="w-2.5 h-2.5 rounded-full bg-teal-400 inline-block" aria-hidden="true" />
-            <span className="font-bold text-lg tracking-tight text-zinc-100">Caloriq</span>
+            <span className="font-bold text-lg tracking-tight text-zinc-100">ForkCount</span>
           </div>
 
           <button
             type="button"
             onClick={onBackToLanding}
-            aria-label="Back to Caloriq home"
+            aria-label="Back to ForkCount home"
             className="text-xs font-medium text-teal-400 hover:text-teal-300 flex items-center gap-1.5 transition-colors cursor-pointer"
           >
             <ArrowLeft className="w-3.5 h-3.5" aria-hidden="true" />
-            Back to Caloriq
+            Back to ForkCount
           </button>
         </div>
       </header>
@@ -51,7 +51,7 @@ export const PrivacyPolicyPage: React.FC<PrivacyPolicyPageProps> = ({
           <section className="space-y-2">
             <h2 className="text-base font-bold text-zinc-100">1. What We Collect</h2>
             <p>
-              Caloriq collects only the information needed to calculate your targets and store your logs:
+              ForkCount collects only the information needed to calculate your targets and store your logs:
             </p>
             <ul className="list-disc pl-5 space-y-1 text-zinc-300">
               <li>Account email address and encrypted password hash (if you create an account).</li>
@@ -71,7 +71,7 @@ export const PrivacyPolicyPage: React.FC<PrivacyPolicyPageProps> = ({
           <section className="space-y-2">
             <h2 className="text-base font-bold text-zinc-100">3. Where It Is Stored &amp; Sub-Processors</h2>
             <p>
-              To operate Caloriq reliably, we use the following sub-processors (#51):
+              To operate ForkCount reliably, we use the following sub-processors (#51):
             </p>
             <ul className="list-disc pl-5 space-y-1 text-zinc-300">
               <li><strong>Firebase (Google Cloud)</strong> — Primary database and authentication storage for signed-in accounts.</li>
@@ -109,14 +109,14 @@ export const PrivacyPolicyPage: React.FC<PrivacyPolicyPageProps> = ({
           <section className="space-y-2">
             <h2 className="text-base font-bold text-zinc-100">6. No Sale of Personal or Health Data (CCPA)</h2>
             <p>
-              Caloriq does <strong>not</strong> sell, rent, or share your personal information or health data with third-party advertisers or data brokers. We use privacy-friendly, cookieless event counts (such as aggregate pageviews and signup counts) that never include personal or health data.
+              ForkCount does <strong>not</strong> sell, rent, or share your personal information or health data with third-party advertisers or data brokers. We use privacy-friendly, cookieless event counts (such as aggregate pageviews and signup counts) that never include personal or health data.
             </p>
           </section>
 
           <section className="space-y-2">
             <h2 className="text-base font-bold text-zinc-100">7. Age Requirement</h2>
             <p>
-              Caloriq is not intended for children under 13 (#50). Users between 13 and 17 years of age should use Caloriq only with the involvement of a parent or legal guardian. We do not knowingly collect personal data from children under 13.
+              ForkCount is not intended for children under 13 (#50). Users between 13 and 17 years of age should use ForkCount only with the involvement of a parent or legal guardian. We do not knowingly collect personal data from children under 13.
             </p>
           </section>
 

@@ -26,7 +26,8 @@ import type {
   PlanDay
 } from '../types/index.js';
 
-const STORAGE_KEY = 'caloriq_standalone_db_v1';
+const STORAGE_KEY = 'forkcount_standalone_db_v1';
+const LEGACY_STORAGE_KEY = 'caloriq_standalone_db_v1';
 
 interface StandaloneDb {
   users: Record<string, { id: string; username?: string; email?: string; passwordHash?: string; isGuest: boolean; isDev?: boolean; devDeviceToken?: string; devBrowserSig?: string; createdAt: number; lastLoginAt: number }>;
@@ -95,7 +96,7 @@ function uid(prefix: string): string {
 function hashStandalonePassword(password: string): string {
   let h1 = 0xdeadbeef ^ password.length;
   let h2 = 0x41c6ce57 ^ password.length;
-  const salted = `caloriq_standalone_${password}`;
+  const salted = `forkcount_standalone_${password}`;
   for (let i = 0; i < salted.length; i++) {
     const ch = salted.charCodeAt(i);
     h1 = Math.imul(h1 ^ ch, 2654435761);
@@ -109,7 +110,7 @@ function hashStandalonePassword(password: string): string {
 function hashAltClientPassword(password: string): string {
   let h1 = 0xdeadbeef ^ password.length;
   let h2 = 0x41c6ce57 ^ password.length;
-  const salted = `caloriq_client_${password}`;
+  const salted = `forkcount_client_${password}`;
   for (let i = 0; i < salted.length; i++) {
     const ch = salted.charCodeAt(i);
     h1 = Math.imul(h1 ^ ch, 2654435761);
@@ -153,7 +154,7 @@ function timingSafeEqualString(a: string | undefined | null, b: string | undefin
 
 function loadDb(): StandaloneDb {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(STORAGE_KEY) || localStorage.getItem(LEGACY_STORAGE_KEY);
     if (!raw) return { ...DEFAULT_DB };
     const parsed = JSON.parse(raw);
     const fakeUsernames = new Set(['claire_m', 'marcus_r', 'elena_v']);
@@ -602,7 +603,10 @@ export async function handleStandaloneApiRequest(urlStr: string, options: Reques
   const authHeader = (options.headers as Record<string, string>)?.['Authorization'] || '';
   let userId = authHeader.startsWith('Bearer ')
     ? authHeader.slice(7).trim()
-    : parsedUrl.searchParams.get('token') || localStorage.getItem('caloriq_session_token') || '';
+    : parsedUrl.searchParams.get('token') ||
+      localStorage.getItem('forkcount_session_token') ||
+      localStorage.getItem('caloriq_session_token') ||
+      '';
 
   if (
     userId === 'usr_dev_housefly' ||
@@ -610,6 +614,7 @@ export async function handleStandaloneApiRequest(urlStr: string, options: Reques
     userId === 'usr_caloriq_1b085' ||
     userId === 'usr_caloriq_a3c1a' ||
     userId === 'usr_caloriq_guest' ||
+    localStorage.getItem('forkcount_dev_device') !== null ||
     localStorage.getItem('calory_dev_device') !== null
   ) {
     userId = devUserInit.id;
@@ -810,7 +815,7 @@ export async function handleStandaloneApiRequest(urlStr: string, options: Reques
       pathname === '/api/auth/reset-password') &&
     method === 'POST'
   ) {
-    const cleanEmail = String(body.email || 'user@calory.app').toLowerCase().trim();
+    const cleanEmail = String(body.email || 'user@forkcount.app').toLowerCase().trim();
     const id = `usr_${cleanEmail.replace(/[^a-z0-9]/gi, '_')}`;
     const existingUser = db.users[id];
     db.users[id] = {
@@ -854,7 +859,7 @@ export async function handleStandaloneApiRequest(urlStr: string, options: Reques
 
   if (pathname === '/api/auth/me' && method === 'GET') {
     let user = db.users[userId];
-    const savedEmail = localStorage.getItem('caloriq_user_email') || '';
+    const savedEmail = localStorage.getItem('forkcount_user_email') || localStorage.getItem('caloriq_user_email') || '';
     if (!user && userId && !userId.startsWith('guest_')) {
       const isDevUser =
         savedEmail.toLowerCase() === 'housefly' ||
@@ -1765,7 +1770,7 @@ export async function handleStandaloneApiRequest(urlStr: string, options: Reques
   if (pathname === '/api/auth/demo' && method === 'POST') {
     const id = uid('demo');
     const today = formatLocalDate();
-    db.users[id] = { id, email: 'demo@caloriq.app', isGuest: true, createdAt: Date.now(), lastLoginAt: Date.now() };
+    db.users[id] = { id, email: 'demo@forkcount.app', isGuest: true, createdAt: Date.now(), lastLoginAt: Date.now() };
     db.profiles[id] = {
       ...defaultProfile('Alex (Demo)', 'alex_demo'),
       age: 31,
@@ -1794,7 +1799,7 @@ export async function handleStandaloneApiRequest(urlStr: string, options: Reques
     });
     db.waterEntries[`${id}:${today}`] = 5;
     saveDb();
-    return { userId: id, email: 'demo@caloriq.app', isGuest: true, isDemo: true, token: id };
+    return { userId: id, email: 'demo@forkcount.app', isGuest: true, isDemo: true, token: id };
   }
 
   if (pathname === '/api/auth/sessions' && method === 'GET') {
@@ -2103,7 +2108,7 @@ export async function handleStandaloneApiRequest(urlStr: string, options: Reques
     ).map((f, idx) => ({
       fdcId: 10000 + idx,
       description: f.name.charAt(0).toUpperCase() + f.name.slice(1),
-      brandName: body.storeFilter || 'Calory Standard Reference',
+      brandName: body.storeFilter || 'ForkCount Standard Reference',
       calories: f.calories,
       protein: f.protein,
       fat: f.fat,

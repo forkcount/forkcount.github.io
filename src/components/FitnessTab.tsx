@@ -38,7 +38,7 @@ export const FitnessTab: React.FC = () => {
 
   // Natural Language In-Code AI Exercise Logger (#16 draft save)
   const [workoutDescription, setWorkoutDescription] = useState<string>(() => {
-    return localStorage.getItem('caloriq_draft_exercise_ai') || '';
+    return localStorage.getItem('forkcount_draft_exercise_ai') || localStorage.getItem('caloriq_draft_exercise_ai') || '';
   });
   const debouncedWorkoutDescription = useDebounce(workoutDescription, 400);
   const [liftWeightKg, setLiftWeightKg] = useState<string>('');
@@ -54,7 +54,7 @@ export const FitnessTab: React.FC = () => {
     Record<string, { rating: number; feedback: string; formatted: string }>
   >(() => {
     try {
-      const raw = localStorage.getItem('caloriq_exercise_ai_ratings_v1');
+      const raw = localStorage.getItem('forkcount_exercise_ai_ratings_v1') || localStorage.getItem('caloriq_exercise_ai_ratings_v1');
       return raw ? JSON.parse(raw) : {};
     } catch {
       return {};
@@ -63,7 +63,7 @@ export const FitnessTab: React.FC = () => {
   const recFetchedForDayKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
-    localStorage.setItem('caloriq_draft_exercise_ai', workoutDescription);
+    localStorage.setItem('forkcount_draft_exercise_ai', workoutDescription);
   }, [workoutDescription]);
 
   // #22 Body Measurements
@@ -178,7 +178,7 @@ export const FitnessTab: React.FC = () => {
     const dayKey = `${uidKey}:${todayStr}`;
 
     try {
-      const raw = localStorage.getItem('caloriq_exercise_ai_rec_v1');
+      const raw = localStorage.getItem('forkcount_exercise_ai_rec_v1') || localStorage.getItem('caloriq_exercise_ai_rec_v1');
       const map = raw ? JSON.parse(raw) : {};
       if (map[dayKey]?.recommendation) {
         setDailyRecommendation(map[dayKey].recommendation);
@@ -268,6 +268,7 @@ export const FitnessTab: React.FC = () => {
         plankSeconds: plankSeconds ? Number(plankSeconds) : undefined
       });
       setWorkoutDescription('');
+      localStorage.removeItem('forkcount_draft_exercise_ai');
       localStorage.removeItem('caloriq_draft_exercise_ai');
       setLiftWeightKg('');
       setLiftReps('');

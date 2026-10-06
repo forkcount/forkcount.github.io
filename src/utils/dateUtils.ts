@@ -1,5 +1,5 @@
 /**
- * Centralized date utility to ensure all date handling across Caloriq
+ * Centralized date utility to ensure all date handling across ForkCount
  * uses the user's LOCAL date, never UTC.
  * 
  * Prevents 11pm logs from rolling over to tomorrow's date.

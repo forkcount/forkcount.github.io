@@ -725,7 +725,7 @@ export async function generateWeeklyInsightsWithGemini(
     const promptPayload = JSON.stringify(input, null, 2);
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
-      contents: `Analyze this user's last 7 days of Caloriq data and return exactly THREE short bullet points, each tied to a real pattern in the data.\n\nData:\n${promptPayload}`,
+      contents: `Analyze this user's last 7 days of ForkCount data and return exactly THREE short bullet points, each tied to a real pattern in the data.\n\nData:\n${promptPayload}`,
       config: {
         systemInstruction: `You generate weekly nutrition and habit insights from real user logs.
 Rules:

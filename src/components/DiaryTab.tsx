@@ -138,8 +138,8 @@ export const DiaryTab: React.FC<DiaryTabProps> = ({ onNavigateToFitness }) => {
       setAiCravingPattern(null);
       return;
     }
-    const cacheKey = `caloriq_craving_pattern_${cravings.length}_${cravings[0]?.id || ''}`;
-    const cached = localStorage.getItem(cacheKey);
+    const cacheKey = `forkcount_craving_pattern_${cravings.length}_${cravings[0]?.id || ''}`;
+    const cached = localStorage.getItem(cacheKey) || localStorage.getItem(`caloriq_craving_pattern_${cravings.length}_${cravings[0]?.id || ''}`);
     if (cached) {
       setAiCravingPattern(cached);
       return;
@@ -162,14 +162,14 @@ export const DiaryTab: React.FC<DiaryTabProps> = ({ onNavigateToFitness }) => {
   // Inline Log Exercise box state (#16 draft save + #15 debounce)
   const [showExerciseBox, setShowExerciseBox] = useState(false);
   const [exerciseInput, setExerciseInput] = useState(() => {
-    return localStorage.getItem('caloriq_draft_diary_exercise') || '';
+    return localStorage.getItem('forkcount_draft_diary_exercise') || localStorage.getItem('caloriq_draft_diary_exercise') || '';
   });
   const debouncedExerciseInput = useDebounce(exerciseInput, 400);
   const [isSavingExercise, setIsSavingExercise] = useState(false);
   const [inlineExerciseError, setInlineExerciseError] = useState<string | null>(null);
 
   useEffect(() => {
-    localStorage.setItem('caloriq_draft_diary_exercise', exerciseInput);
+    localStorage.setItem('forkcount_draft_diary_exercise', exerciseInput);
   }, [exerciseInput]);
 
   const decipheredExercise = useMemo(
@@ -197,6 +197,7 @@ export const DiaryTab: React.FC<DiaryTabProps> = ({ onNavigateToFitness }) => {
         intensity: decipheredExercise.overallIntensity
       });
       setExerciseInput('');
+      localStorage.removeItem('forkcount_draft_diary_exercise');
       localStorage.removeItem('caloriq_draft_diary_exercise');
       setShowExerciseBox(false);
       setCopyStatus(`Saved exercise (+${decipheredExercise.totalCaloriesBurned} kcal burned)`);
@@ -299,7 +300,7 @@ export const DiaryTab: React.FC<DiaryTabProps> = ({ onNavigateToFitness }) => {
     const clientLoggedDays = coachSevenDaySummaries.filter((d) => d.hasAnyLog).length;
 
     try {
-      const raw = localStorage.getItem('caloriq_diary_coach_v1');
+      const raw = localStorage.getItem('forkcount_diary_coach_v1') || localStorage.getItem('caloriq_diary_coach_v1');
       const map = raw ? JSON.parse(raw) : {};
       if (map[dayKey]?.hasEnoughData && map[dayKey]?.suggestion) {
         setCoachSuggestion(map[dayKey].suggestion);

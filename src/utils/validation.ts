@@ -54,7 +54,7 @@ export function getSafeRedirectUrl(target: string | null | undefined, defaultRou
   }
 
   try {
-    const dummyOrigin = 'https://caloriq.internal';
+    const dummyOrigin = 'https://forkcount.internal';
     const parsed = new URL(trimmed, dummyOrigin);
     if (parsed.origin !== dummyOrigin) {
       return defaultRoute;

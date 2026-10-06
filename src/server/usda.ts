@@ -40,7 +40,7 @@ export async function searchUsdaFoods(query: string, storeFilter?: string): Prom
     const res = await safeOutboundFetch(url.toString(), {
       headers: {
         'Accept': 'application/json',
-        'User-Agent': 'Caloriq-Nutrition-Tracker/1.0'
+        'User-Agent': 'ForkCount-Nutrition-Tracker/1.0'
       }
     });
 

@@ -3,7 +3,7 @@ import { Calendar, CheckCircle2, Flame, Droplets, Target, X, ArrowRight } from '
 import { useApp } from '../context/AppContext.js';
 import { formatLocalDate } from '../utils/dateUtils.js';
 
-const RECAP_KEY_PREFIX = 'caloriq_weekly_recap_seen_';
+const RECAP_KEY_PREFIX = 'forkcount_weekly_recap_seen_';
 
 interface WeeklyRecapModalProps {
   forceOpen?: boolean;
@@ -20,7 +20,8 @@ export const WeeklyRecapModal: React.FC<WeeklyRecapModalProps> = ({ forceOpen = 
     const isMonday = now.getDay() === 1;
     const todayStr = formatLocalDate(now);
     const seenKey = `${RECAP_KEY_PREFIX}${todayStr}`;
-    if (isMonday && !localStorage.getItem(seenKey)) {
+    const legacyKey = `caloriq_weekly_recap_seen_${todayStr}`;
+    if (isMonday && !localStorage.getItem(seenKey) && !localStorage.getItem(legacyKey)) {
       setIsOpen(true);
     }
   }, []);

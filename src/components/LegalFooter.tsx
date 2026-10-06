@@ -38,13 +38,13 @@ export const LegalFooter: React.FC<LegalFooterProps> = ({
         <span className="font-medium tracking-wide">Self-guided nutrition &amp; activity tracking tools</span>
       </div>
       <p className="leading-relaxed">
-        Calory provides weight-management tracking tools and is not a medical provider. Speak to your doctor before changing how you eat or train.
+        ForkCount provides weight-management tracking tools and is not a medical provider. Speak to your doctor before changing how you eat or train.
       </p>
       <p className="text-zinc-300 leading-relaxed">
-        If you&apos;re under 18, use Calory with a parent or guardian. Not intended for children under 13.
+        If you&apos;re under 18, use ForkCount with a parent or guardian. Not intended for children under 13.
       </p>
       <p className="text-zinc-400 leading-relaxed">
-        Calory uses local storage to keep you signed in and remember your theme. It does not use tracking cookies. See our{' '}
+        ForkCount uses local storage to keep you signed in and remember your theme. It does not use tracking cookies. See our{' '}
         <a
           href="/privacy"
           onClick={(e) => handleNav(e, '/privacy', onOpenPrivacy)}

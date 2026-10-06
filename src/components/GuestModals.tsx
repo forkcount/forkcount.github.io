@@ -94,16 +94,20 @@ export const GuestExpiredOverlay: React.FC = () => {
   );
 };
 
-const TIPS_DONE_KEY = 'caloriq_first_run_tips_done';
-const ONBOARDING_KEY = 'caloriq_onboarding_completed';
+const TIPS_DONE_KEY = 'forkcount_first_run_tips_done';
+const ONBOARDING_KEY = 'forkcount_onboarding_completed';
 
 export const FirstRunTooltips: React.FC = () => {
   const [step, setStep] = useState<number | null>(null);
 
   useEffect(() => {
     const check = () => {
-      const onboardingDone = localStorage.getItem(ONBOARDING_KEY) === 'true';
-      const tipsDone = localStorage.getItem(TIPS_DONE_KEY) === 'true';
+      const onboardingDone =
+        localStorage.getItem(ONBOARDING_KEY) === 'true' ||
+        localStorage.getItem('caloriq_onboarding_completed') === 'true';
+      const tipsDone =
+        localStorage.getItem(TIPS_DONE_KEY) === 'true' ||
+        localStorage.getItem('caloriq_first_run_tips_done') === 'true';
       if (onboardingDone && !tipsDone && step === null) {
         setStep(0);
       }

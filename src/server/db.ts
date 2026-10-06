@@ -1984,7 +1984,7 @@ export function createDemoAccount(): UserRow {
 
   const user: UserRow = {
     id,
-    email: 'demo@calory.app',
+    email: 'demo@forkcount.app',
     isGuest: true,
     createdAt: now,
     lastLoginAt: now
@@ -2095,7 +2095,7 @@ export interface BugReportRecord {
 let cookieConsentLogs: CookieConsentRecord[] = [];
 let contactSubmissions: ContactSubmissionRecord[] = [];
 let bugReportsStore: BugReportRecord[] = [];
-let maintenanceModeState = { enabled: false, message: 'Calory is undergoing a scheduled update. Back in a few minutes.' };
+let maintenanceModeState = { enabled: false, message: 'ForkCount is undergoing a scheduled update. Back in a few minutes.' };
 
 const privacyAnalyticsStore: {
   pageviews: number;
@@ -2201,7 +2201,7 @@ export function getMaintenanceStatus() {
 export function setMaintenanceStatus(enabled: boolean, message?: string) {
   maintenanceModeState = {
     enabled: Boolean(enabled),
-    message: sanitizeString(message || 'Calory is undergoing a scheduled update. Back in a few minutes.', 300)
+    message: sanitizeString(message || 'ForkCount is undergoing a scheduled update. Back in a few minutes.', 300)
   };
   return maintenanceModeState;
 }
@@ -2526,7 +2526,7 @@ export async function resolveIpGeo(
     const timeout = setTimeout(() => controller.abort(), 1800);
     const resp = await safeOutboundFetch(`https://ipapi.co/${encodeURIComponent(cleanIp)}/json/`, {
       signal: controller.signal,
-      headers: { 'User-Agent': 'Calory-Security-Inspector/1.0' }
+      headers: { 'User-Agent': 'ForkCount-Security-Inspector/1.0' }
     });
     clearTimeout(timeout);
     if (resp.ok) {
@@ -2860,7 +2860,7 @@ export function seedFullWeekDemoAccount(): {
 } {
   const shortTag = crypto.randomBytes(2).toString('hex');
   const username = `demo_${shortTag}`;
-  const email = `demo.${shortTag}@calory.app`;
+  const email = `demo.${shortTag}@forkcount.app`;
   const id = `usr_demo_${crypto.randomUUID()}`;
   const now = Date.now();
 

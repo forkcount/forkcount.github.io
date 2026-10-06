@@ -88,8 +88,8 @@ const BADGE_DEFINITIONS: Array<{ id: string; title: string; desc: string }> = [
   { id: 'First weigh-in', title: 'First Weigh-In', desc: 'Recorded baseline scale weight' },
   { id: 'Weighed 7 times', title: '7 Weigh-Ins', desc: 'Consistent scale monitoring' },
   { id: 'Weighed 30 times', title: '30 Weigh-Ins', desc: 'Comprehensive weight progression' },
-  { id: '50 XP', title: '50 XP', desc: 'Earned 50 XP in Caloriq' },
-  { id: '200 XP', title: '200 XP', desc: 'Earned 200 XP in Caloriq' },
+  { id: '50 XP', title: '50 XP', desc: 'Earned 50 XP in ForkCount' },
+  { id: '200 XP', title: '200 XP', desc: 'Earned 200 XP in ForkCount' },
   { id: '1000 XP', title: '1,000 XP', desc: 'Earned 1,000 XP milestone' },
   { id: '5000 XP', title: '5,000 XP', desc: 'Elite tracking veteran' }
 ];
@@ -172,8 +172,9 @@ export const MeTab: React.FC<MeTabProps> = ({
   const [deletePasswordConfirm, setDeletePasswordConfirm] = useState('');
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [deletedBanner, setDeletedBanner] = useState<string | null>(() => {
-    const msg = sessionStorage.getItem('caloriq_deleted_notice');
+    const msg = sessionStorage.getItem('forkcount_deleted_notice') || sessionStorage.getItem('caloriq_deleted_notice');
     if (msg) {
+      sessionStorage.removeItem('forkcount_deleted_notice');
       sessionStorage.removeItem('caloriq_deleted_notice');
       return msg;
     }
@@ -182,7 +183,7 @@ export const MeTab: React.FC<MeTabProps> = ({
 
   // #53, #58 Active sessions & Last signed in
   const [sessionsList, setSessionsList] = useState<Array<{ id: string; deviceLabel: string; ip: string; createdAt: string; lastActiveAt: string; isCurrent: boolean }>>([]);
-  const rawLastSignedInAt = localStorage.getItem('caloriq_last_signed_in_at');
+  const rawLastSignedInAt = localStorage.getItem('forkcount_last_signed_in_at') || localStorage.getItem('caloriq_last_signed_in_at');
   const formattedLastSignedIn = (() => {
     const candidate = rawLastSignedInAt || sessionsList.find((s) => s.isCurrent)?.createdAt || sessionsList[0]?.createdAt;
     if (!candidate || candidate === 'null' || candidate === 'undefined' || candidate === 'first_session') {
@@ -316,7 +317,7 @@ export const MeTab: React.FC<MeTabProps> = ({
   const currentThemeMode = formData.themeMode || profile.themeMode || 'dark';
   const handleSetTheme = async (mode: 'dark' | 'light' | 'auto') => {
     try {
-      localStorage.setItem('caloriq_theme_mode', mode);
+      localStorage.setItem('forkcount_theme_mode', mode);
     } catch {
       // ignore
     }
@@ -443,7 +444,7 @@ export const MeTab: React.FC<MeTabProps> = ({
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `caloriq-export-${todayStr}.json`;
+      a.download = `forkcount-export-${todayStr}.json`;
       a.click();
       URL.revokeObjectURL(url);
     } catch {
@@ -479,7 +480,7 @@ export const MeTab: React.FC<MeTabProps> = ({
     setIsSendingBug(true);
     setBugStatus(null);
     try {
-      const recentErrors = ((window as any).__caloriqConsoleErrors || []).slice(-5);
+      const recentErrors = (((window as any).__forkcountConsoleErrors || (window as any).__caloriqConsoleErrors) || []).slice(-5);
       await api.submitBugReport({
         description: bugDescription.trim(),
         browser: navigator.userAgent,
@@ -514,11 +515,11 @@ export const MeTab: React.FC<MeTabProps> = ({
     const keysToRemove: string[] = [];
     for (let i = 0; i < localStorage.length; i++) {
       const k = localStorage.key(i);
-      if (k && k.startsWith('caloriq')) keysToRemove.push(k);
+      if (k && (k.startsWith('forkcount') || k.startsWith('caloriq'))) keysToRemove.push(k);
     }
     keysToRemove.forEach((k) => localStorage.removeItem(k));
     sessionStorage.setItem(
-      'caloriq_deleted_notice',
+      'forkcount_deleted_notice',
       'Your account and all your data have been deleted.'
     );
     await resetGuestSession();
@@ -692,11 +693,11 @@ export const MeTab: React.FC<MeTabProps> = ({
             <button
               type="button"
               onClick={onOpenDescription}
-              aria-label="View Caloriq landing page"
+              aria-label="View ForkCount landing page"
               className="w-full p-2.5 bg-zinc-950 hover:bg-zinc-850 border border-zinc-800 rounded-xl text-xs font-medium text-teal-300 flex items-center justify-center gap-2 transition-colors"
             >
               <Sparkles className="w-4 h-4 text-teal-400" />
-              About Caloriq
+              About ForkCount
             </button>
           )}
           <div className="grid grid-cols-2 gap-2">
@@ -834,7 +835,7 @@ export const MeTab: React.FC<MeTabProps> = ({
 
         {formData.gender === 'prefer_not_to_say' && (
           <div className="p-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-[11px] text-zinc-300">
-            Gender is set to &ldquo;Prefer not to say&rdquo; — Caloriq is using the average of the male and female Mifflin-St Jeor calorie formulas.
+            Gender is set to &ldquo;Prefer not to say&rdquo; — ForkCount is using the average of the male and female Mifflin-St Jeor calorie formulas.
           </div>
         )}
 
@@ -1159,7 +1160,7 @@ export const MeTab: React.FC<MeTabProps> = ({
             )}
             {formData.age >= 13 && formData.age < 18 && (
               <span className="text-[10px] text-amber-400 mt-1 block">
-                Use Caloriq with a parent or guardian.
+                Use ForkCount with a parent or guardian.
               </span>
             )}
           </div>
@@ -1667,7 +1668,7 @@ export const MeTab: React.FC<MeTabProps> = ({
           </button>
         </div>
         <p className="text-xs text-zinc-400 leading-relaxed">
-          Install Caloriq to your phone&apos;s home screen for one-tap offline logging and full-screen access:
+          Install ForkCount to your phone&apos;s home screen for one-tap offline logging and full-screen access:
         </p>
         <div className="grid grid-cols-1 gap-2 text-xs">
           <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-3">
@@ -1933,7 +1934,7 @@ export const MeTab: React.FC<MeTabProps> = ({
               className="w-full p-2.5 bg-zinc-950 hover:bg-zinc-850 border border-teal-500/30 rounded-xl text-xs font-medium text-teal-300 flex items-center justify-center gap-2 transition-colors"
             >
               <Sparkles className="w-4 h-4 text-teal-400" />
-              About Caloriq
+              About ForkCount
             </button>
           )}
 

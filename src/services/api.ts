@@ -33,12 +33,18 @@ function getDeviceMetadata() {
   };
 }
 
-const TOKEN_KEY = 'caloriq_session_token';
-const GUEST_KEY = 'caloriq_guest_id';
-const OFFLINE_QUEUE_KEY = 'caloriq_offline_queue';
-const CLIENT_USERS_KEY = 'caloriq_client_users';
-const USER_EMAIL_KEY = 'caloriq_user_email';
-export const DEV_DEVICE_KEY = 'calory_dev_device';
+const TOKEN_KEY = 'forkcount_session_token';
+const OLD_TOKEN_KEY = 'caloriq_session_token';
+const GUEST_KEY = 'forkcount_guest_id';
+const OLD_GUEST_KEY = 'caloriq_guest_id';
+const OFFLINE_QUEUE_KEY = 'forkcount_offline_queue';
+const OLD_OFFLINE_QUEUE_KEY = 'caloriq_offline_queue';
+const CLIENT_USERS_KEY = 'forkcount_client_users';
+const OLD_CLIENT_USERS_KEY = 'caloriq_client_users';
+const USER_EMAIL_KEY = 'forkcount_user_email';
+const OLD_USER_EMAIL_KEY = 'caloriq_user_email';
+export const DEV_DEVICE_KEY = 'forkcount_dev_device';
+export const OLD_DEV_DEVICE_KEY = 'calory_dev_device';
 
 export function getBrowserDevSignature(): string {
   if (typeof navigator === 'undefined') return 'server';
@@ -52,7 +58,7 @@ export function getStoredDevDeviceRecord(): {
 } | null {
   if (typeof localStorage === 'undefined') return null;
   try {
-    const raw = localStorage.getItem(DEV_DEVICE_KEY);
+    const raw = localStorage.getItem(DEV_DEVICE_KEY) || localStorage.getItem(OLD_DEV_DEVICE_KEY);
     if (raw === null) return null;
     const currentSig = getBrowserDevSignature();
     try {
@@ -87,7 +93,7 @@ interface ClientUserRecord {
 function hashClientPassword(password: string): string {
   let h1 = 0xdeadbeef ^ password.length;
   let h2 = 0x41c6ce57 ^ password.length;
-  const salted = `caloriq_client_${password}`;
+  const salted = `forkcount_client_${password}`;
   for (let i = 0; i < salted.length; i++) {
     const ch = salted.charCodeAt(i);
     h1 = Math.imul(h1 ^ ch, 2654435761);
@@ -154,9 +160,14 @@ class ApiService {
 
   constructor() {
     if (typeof localStorage !== 'undefined') {
-      const savedEmail = localStorage.getItem(USER_EMAIL_KEY);
-      const savedTok = localStorage.getItem(TOKEN_KEY) || sessionStorage.getItem(TOKEN_KEY);
-      const hasDevDevice = localStorage.getItem(DEV_DEVICE_KEY) !== null;
+      const savedEmail = localStorage.getItem(USER_EMAIL_KEY) || localStorage.getItem(OLD_USER_EMAIL_KEY);
+      const savedTok =
+        localStorage.getItem(TOKEN_KEY) ||
+        localStorage.getItem(OLD_TOKEN_KEY) ||
+        sessionStorage.getItem(TOKEN_KEY) ||
+        sessionStorage.getItem(OLD_TOKEN_KEY);
+      const hasDevDevice =
+        localStorage.getItem(DEV_DEVICE_KEY) !== null || localStorage.getItem(OLD_DEV_DEVICE_KEY) !== null;
       const isBrokenDevGuest =
         savedTok === 'usr_caloriq_1b085' ||
         savedTok === 'usr_caloriq_a3c1a' ||
@@ -170,29 +181,35 @@ class ApiService {
 
       if (hasDevDevice || isBrokenDevGuest) {
         if (!hasDevDevice) {
-          localStorage.setItem(
-            DEV_DEVICE_KEY,
-            JSON.stringify({
-              username: 'housefly',
-              deviceToken: `dev_${Date.now().toString(36)}`,
-              browserSig: getBrowserDevSignature(),
-              lockedAt: Date.now()
-            })
-          );
+          const devRec = JSON.stringify({
+            username: 'housefly',
+            deviceToken: `dev_${Date.now().toString(36)}`,
+            browserSig: getBrowserDevSignature(),
+            lockedAt: Date.now()
+          });
+          localStorage.setItem(DEV_DEVICE_KEY, devRec);
+          localStorage.setItem(OLD_DEV_DEVICE_KEY, devRec);
         }
         localStorage.setItem(TOKEN_KEY, 'usr_545648c7-5e38-44fc-adc5-373e0b3e5e18');
+        localStorage.setItem(OLD_TOKEN_KEY, 'usr_545648c7-5e38-44fc-adc5-373e0b3e5e18');
         localStorage.setItem(USER_EMAIL_KEY, 'housefly');
+        localStorage.setItem(OLD_USER_EMAIL_KEY, 'housefly');
         localStorage.removeItem(GUEST_KEY);
+        localStorage.removeItem(OLD_GUEST_KEY);
       }
     }
-    const savedToken = localStorage.getItem(TOKEN_KEY) || sessionStorage.getItem(TOKEN_KEY);
+    const savedToken =
+      localStorage.getItem(TOKEN_KEY) ||
+      localStorage.getItem(OLD_TOKEN_KEY) ||
+      sessionStorage.getItem(TOKEN_KEY) ||
+      sessionStorage.getItem(OLD_TOKEN_KEY);
     this.token = savedToken && savedToken !== 'undefined' && savedToken !== 'null' ? savedToken : null;
     if (typeof window !== 'undefined') {
       window.addEventListener('online', () => {
         this.flushOfflineQueue();
       });
       window.addEventListener('storage', (e) => {
-        if (e.key === 'caloriq_last_mutation' && e.newValue) {
+        if ((e.key === 'forkcount_last_mutation' || e.key === 'caloriq_last_mutation') && e.newValue) {
           try {
             const parsed = JSON.parse(e.newValue);
             if (parsed.tabId !== this.tabId && parsed.token && timingSafeEqualString(parsed.token, this.token)) {
@@ -214,24 +231,31 @@ class ApiService {
     if (!token || token === 'undefined' || token === 'null') return;
     this.token = token;
     localStorage.setItem(TOKEN_KEY, token);
+    localStorage.setItem(OLD_TOKEN_KEY, token);
     sessionStorage.removeItem(TOKEN_KEY);
+    sessionStorage.removeItem(OLD_TOKEN_KEY);
     if (isGuest) {
       localStorage.setItem(GUEST_KEY, token);
+      localStorage.setItem(OLD_GUEST_KEY, token);
     } else {
       localStorage.removeItem(GUEST_KEY);
+      localStorage.removeItem(OLD_GUEST_KEY);
     }
     this.initSse();
   }
 
   getGuestId(): string | null {
-    return localStorage.getItem(GUEST_KEY);
+    return localStorage.getItem(GUEST_KEY) || localStorage.getItem(OLD_GUEST_KEY);
   }
 
   clearToken() {
     this.token = null;
     localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(OLD_TOKEN_KEY);
     sessionStorage.removeItem(TOKEN_KEY);
+    sessionStorage.removeItem(OLD_TOKEN_KEY);
     localStorage.removeItem(GUEST_KEY);
+    localStorage.removeItem(OLD_GUEST_KEY);
     if (this.sse) {
       this.sse.close();
       this.sse = null;
@@ -251,6 +275,7 @@ class ApiService {
       }).catch(() => {});
     }
     localStorage.removeItem(USER_EMAIL_KEY);
+    localStorage.removeItem(OLD_USER_EMAIL_KEY);
     this.clearToken();
   }
 
@@ -494,15 +519,13 @@ class ApiService {
       }
       try {
         const parsedBody = options.body ? JSON.parse(String(options.body)) : undefined;
-        localStorage.setItem(
-          'caloriq_last_mutation',
-          JSON.stringify({
-            tabId: this.tabId,
-            token: this.token,
-            date: parsedBody?.date,
-            ts: Date.now()
-          })
-        );
+        const mutPayload = JSON.stringify({
+          tabId: this.tabId,
+          token: this.token,
+          date: parsedBody?.date,
+          ts: Date.now()
+        });
+        localStorage.setItem('forkcount_last_mutation', mutPayload);
       } catch {
         // ignore
       }
@@ -513,7 +536,7 @@ class ApiService {
   // Auth
   private getLocalProfile(userId: string, email?: string): UserProfile {
     try {
-      const raw = localStorage.getItem(`caloriq_local_profile_${userId}`);
+      const raw = localStorage.getItem(`forkcount_local_profile_${userId}`) || localStorage.getItem(`caloriq_local_profile_${userId}`);
       if (raw) {
         return JSON.parse(raw);
       }
@@ -521,13 +544,14 @@ class ApiService {
       // ignore
     }
     const baseName = email ? '' : 'Guest User';
-    const baseUser = email ? email.split('@')[0].replace(/[^a-z0-9_]/gi, '_').toLowerCase() : `caloriq_${userId.slice(0, 6)}`;
+    const baseUser = email ? email.split('@')[0].replace(/[^a-z0-9_]/gi, '_').toLowerCase() : `forkcount_${userId.slice(0, 6)}`;
     return getEmptyClientProfile(baseName, baseUser);
   }
 
   private saveLocalProfile(userId: string, profile: UserProfile) {
     try {
-      localStorage.setItem(`caloriq_local_profile_${userId}`, JSON.stringify(profile));
+      const json = JSON.stringify(profile);
+      localStorage.setItem(`forkcount_local_profile_${userId}`, json);
     } catch {
       // ignore
     }
@@ -552,10 +576,11 @@ class ApiService {
         const data = await res.json();
         const token = data?.token || data?.userId || fallbackId;
         localStorage.setItem(USER_EMAIL_KEY, 'housefly');
+        sessionStorage.removeItem('forkcount_is_first_session');
         sessionStorage.removeItem('caloriq_is_first_session');
-        localStorage.setItem('caloriq_last_signed_in_at', new Date().toISOString());
-        localStorage.setItem('caloriq_signup_complete', 'true');
-        localStorage.setItem(`caloriq_signup_complete_${token}`, 'true');
+        localStorage.setItem('forkcount_last_signed_in_at', new Date().toISOString());
+        localStorage.setItem('forkcount_signup_complete', 'true');
+        localStorage.setItem(`forkcount_signup_complete_${token}`, 'true');
         this.setToken(token, false, true);
         return true;
       }
@@ -563,8 +588,9 @@ class ApiService {
       // ignore
     }
     localStorage.setItem(USER_EMAIL_KEY, 'housefly');
+    sessionStorage.removeItem('forkcount_is_first_session');
     sessionStorage.removeItem('caloriq_is_first_session');
-    localStorage.setItem('caloriq_signup_complete', 'true');
+    localStorage.setItem('forkcount_signup_complete', 'true');
     this.setToken(fallbackId, false, true);
     return true;
   }
@@ -597,11 +623,14 @@ class ApiService {
           if (me.username || me.email) {
             localStorage.setItem(USER_EMAIL_KEY, me.username || me.email || '');
           }
-          const isFirstSession = sessionStorage.getItem('caloriq_is_first_session') === 'true';
+          const isFirstSession =
+            sessionStorage.getItem('forkcount_is_first_session') === 'true' ||
+            sessionStorage.getItem('caloriq_is_first_session') === 'true';
           if (me.lastSignedInAt && !isFirstSession) {
             const num = Number(me.lastSignedInAt);
             const d = !Number.isNaN(num) && num > 0 ? new Date(num) : new Date(String(me.lastSignedInAt));
             if (!Number.isNaN(d.getTime())) {
+              localStorage.setItem('forkcount_last_signed_in_at', d.toISOString());
               localStorage.setItem('caloriq_last_signed_in_at', d.toISOString());
             }
           }
@@ -707,9 +736,13 @@ class ApiService {
       })
     );
     localStorage.setItem(USER_EMAIL_KEY, 'housefly');
+    sessionStorage.removeItem('forkcount_is_first_session');
     sessionStorage.removeItem('caloriq_is_first_session');
+    localStorage.setItem('forkcount_last_signed_in_at', new Date().toISOString());
     localStorage.setItem('caloriq_last_signed_in_at', new Date().toISOString());
+    localStorage.setItem('forkcount_signup_complete', 'true');
     localStorage.setItem('caloriq_signup_complete', 'true');
+    localStorage.setItem(`forkcount_signup_complete_${data.userId}`, 'true');
     localStorage.setItem(`caloriq_signup_complete_${data.userId}`, 'true');
     this.setToken(data.token, false, true);
     return data;
@@ -767,20 +800,26 @@ class ApiService {
         localStorage.setItem(USER_EMAIL_KEY, me.username || me.email || '');
       }
       if (!me.isGuest) {
-        const isFirstSession = sessionStorage.getItem('caloriq_is_first_session') === 'true';
-        const currentRaw = localStorage.getItem('caloriq_last_signed_in_at');
+        const isFirstSession =
+          sessionStorage.getItem('forkcount_is_first_session') === 'true' ||
+          sessionStorage.getItem('caloriq_is_first_session') === 'true';
+        const currentRaw =
+          localStorage.getItem('forkcount_last_signed_in_at') || localStorage.getItem('caloriq_last_signed_in_at');
         if (me.lastSignedInAt && !isFirstSession) {
           const num = Number(me.lastSignedInAt);
           const d = !Number.isNaN(num) && num > 0 ? new Date(num) : new Date(String(me.lastSignedInAt));
           if (!Number.isNaN(d.getTime())) {
+            localStorage.setItem('forkcount_last_signed_in_at', d.toISOString());
             localStorage.setItem('caloriq_last_signed_in_at', d.toISOString());
           }
         } else if (currentRaw && currentRaw !== 'first_session') {
           const num = Number(currentRaw);
           const d = !Number.isNaN(num) && num > 0 ? new Date(num) : new Date(currentRaw);
           if (!Number.isNaN(d.getTime())) {
+            localStorage.setItem('forkcount_last_signed_in_at', d.toISOString());
             localStorage.setItem('caloriq_last_signed_in_at', d.toISOString());
           } else {
+            localStorage.removeItem('forkcount_last_signed_in_at');
             localStorage.removeItem('caloriq_last_signed_in_at');
           }
         }
@@ -956,6 +995,7 @@ class ApiService {
     };
     saveClientUsers(users);
     localStorage.setItem(USER_EMAIL_KEY, cleanEmail);
+    localStorage.setItem('forkcount_last_signed_in_at', 'first_session');
     localStorage.setItem('caloriq_last_signed_in_at', 'first_session');
     this.setToken(resolvedToken, false, rememberMe);
     return {
@@ -1017,10 +1057,8 @@ class ApiService {
     saveClientUsers(users);
     localStorage.setItem(USER_EMAIL_KEY, cleanEmail);
     const loginTs = data.lastLoginAt ? new Date(Number(data.lastLoginAt) || data.lastLoginAt) : new Date();
-    localStorage.setItem(
-      'caloriq_last_signed_in_at',
-      !Number.isNaN(loginTs.getTime()) ? loginTs.toISOString() : new Date().toISOString()
-    );
+    const isoLogin = !Number.isNaN(loginTs.getTime()) ? loginTs.toISOString() : new Date().toISOString();
+    localStorage.setItem('forkcount_last_signed_in_at', isoLogin);
     this.setToken(data.token, false, rememberMe);
     return data;
   }
@@ -1155,8 +1193,8 @@ class ApiService {
       };
       saveClientUsers(users);
       localStorage.setItem(USER_EMAIL_KEY, data.username || cleanUsername);
-      sessionStorage.setItem('caloriq_is_first_session', 'true');
-      localStorage.setItem('caloriq_last_signed_in_at', 'first_session');
+      sessionStorage.setItem('forkcount_is_first_session', 'true');
+      localStorage.setItem('forkcount_last_signed_in_at', 'first_session');
       this.setToken(data.token, false, rememberMe);
       return data;
     }
@@ -1216,15 +1254,14 @@ class ApiService {
       };
       saveClientUsers(users);
       localStorage.setItem(USER_EMAIL_KEY, data.username || data.email || cleanUsername);
+      sessionStorage.removeItem('forkcount_is_first_session');
       sessionStorage.removeItem('caloriq_is_first_session');
       const loginTs = data.lastLoginAt ? new Date(Number(data.lastLoginAt) || data.lastLoginAt) : new Date();
-      localStorage.setItem(
-        'caloriq_last_signed_in_at',
-        !Number.isNaN(loginTs.getTime()) ? loginTs.toISOString() : new Date().toISOString()
-      );
-      localStorage.setItem('caloriq_signup_complete', 'true');
+      const isoLogin = !Number.isNaN(loginTs.getTime()) ? loginTs.toISOString() : new Date().toISOString();
+      localStorage.setItem('forkcount_last_signed_in_at', isoLogin);
+      localStorage.setItem('forkcount_signup_complete', 'true');
       if (data.userId) {
-        localStorage.setItem(`caloriq_signup_complete_${data.userId}`, 'true');
+        localStorage.setItem(`forkcount_signup_complete_${data.userId}`, 'true');
       }
       if (data.isDev === true) {
         const browserSig = getBrowserDevSignature();
@@ -1578,7 +1615,7 @@ class ApiService {
     goal?: string;
     activityLevel?: string;
   }): Promise<{ rating: number; feedback: string; formatted: string }> {
-    const cacheStorageKey = 'caloriq_exercise_ai_ratings_v1';
+    const cacheStorageKey = 'forkcount_exercise_ai_ratings_v1';
     try {
       const raw = localStorage.getItem(cacheStorageKey);
       const map = raw ? JSON.parse(raw) : {};
@@ -1627,7 +1664,7 @@ class ApiService {
     activityLevel?: string;
     fitnessLevel?: string;
   }): Promise<{ date: string; recommendation: string }> {
-    const cacheStorageKey = 'caloriq_exercise_ai_rec_v1';
+    const cacheStorageKey = 'forkcount_exercise_ai_rec_v1';
     const dayKey = `${payload.userId || 'user'}:${payload.date}`;
     try {
       const raw = localStorage.getItem(cacheStorageKey);
@@ -1687,7 +1724,7 @@ class ApiService {
       hasAnyLog: boolean;
     }>;
   }): Promise<{ date: string; hasEnoughData: boolean; daysLoggedCount: number; suggestion: string }> {
-    const cacheStorageKey = 'caloriq_diary_coach_v1';
+    const cacheStorageKey = 'forkcount_diary_coach_v1';
     const dayKey = `${payload.userId || 'user'}:${payload.date}`;
     try {
       const raw = localStorage.getItem(cacheStorageKey);
@@ -1902,8 +1939,8 @@ class ApiService {
     this.setToken(data.token, false, rememberMe);
     localStorage.removeItem(GUEST_KEY);
     if (data.email) {
-      localStorage.setItem('caloriq_user_email', data.email);
-      localStorage.setItem('caloriq_last_signed_in_at', new Date().toISOString());
+      localStorage.setItem(USER_EMAIL_KEY, data.email);
+      localStorage.setItem('forkcount_last_signed_in_at', new Date().toISOString());
     }
     return data;
   }
@@ -2000,13 +2037,13 @@ class ApiService {
       body: JSON.stringify({ oldEmail, newEmail, password })
     });
     if (res.email) {
-      localStorage.setItem('caloriq_user_email', res.email);
+      localStorage.setItem(USER_EMAIL_KEY, res.email);
     }
     return res;
   }
 
   async requestEmailChange(currentPassword: string, newEmail: string): Promise<{ success: boolean; message: string }> {
-    const oldEmail = localStorage.getItem('caloriq_user_email') || '';
+    const oldEmail = localStorage.getItem(USER_EMAIL_KEY) || localStorage.getItem(OLD_USER_EMAIL_KEY) || '';
     await this.changeEmail(oldEmail, newEmail, currentPassword);
     return {
       success: true,
@@ -2015,7 +2052,8 @@ class ApiService {
   }
 
   async confirmEmailChange(newEmail: string, _oldCode: string, _newCode: string): Promise<{ success: boolean; email: string }> {
-    localStorage.setItem('caloriq_user_email', newEmail);
+    localStorage.setItem(USER_EMAIL_KEY, newEmail);
+    localStorage.setItem(OLD_USER_EMAIL_KEY, newEmail);
     return { success: true, email: newEmail };
   }
 
@@ -2052,7 +2090,7 @@ class ApiService {
 
   // #34 / #47 Cookie consent logging with timestamp & IP
   async logCookieConsent(choice: 'accepted' | 'declined' = 'accepted'): Promise<{ success: boolean; timestamp: string }> {
-    localStorage.setItem('caloriq_cookie_consent_at', new Date().toISOString());
+    localStorage.setItem('forkcount_cookie_consent_at', new Date().toISOString());
     return this.request('/api/compliance/cookie-consent', {
       method: 'POST',
       body: JSON.stringify({ choice })
@@ -2325,7 +2363,7 @@ class ApiService {
   // === COMMUNITY FEED & MODERATION ===
   private getLocalCommunityPosts(): CommunityPost[] {
     try {
-      const raw = localStorage.getItem('caloriq_community_posts_v1');
+      const raw = localStorage.getItem('forkcount_community_posts_v1') || localStorage.getItem('caloriq_community_posts_v1');
       if (!raw) return [];
       const parsed = JSON.parse(raw);
       return Array.isArray(parsed)
@@ -2338,7 +2376,8 @@ class ApiService {
 
   private saveLocalCommunityPosts(posts: CommunityPost[]) {
     try {
-      localStorage.setItem('caloriq_community_posts_v1', JSON.stringify(posts.slice(0, 200)));
+      const json = JSON.stringify(posts.slice(0, 200));
+      localStorage.setItem('forkcount_community_posts_v1', json);
     } catch {
       // ignore storage quota errors
     }

@@ -15,7 +15,7 @@ if ('serviceWorker' in navigator && window.location.protocol.startsWith('http'))
             if (!newWorker) return;
             newWorker.addEventListener('statechange', () => {
               if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                window.dispatchEvent(new CustomEvent('caloriq-sw-update'));
+                window.dispatchEvent(new CustomEvent('forkcount-sw-update'));
               }
             });
           });
@@ -24,7 +24,7 @@ if ('serviceWorker' in navigator && window.location.protocol.startsWith('http'))
 
       navigator.serviceWorker.addEventListener('message', (event) => {
         if (event.data && event.data.type === 'SW_UPDATED') {
-          window.dispatchEvent(new CustomEvent('caloriq-sw-update'));
+          window.dispatchEvent(new CustomEvent('forkcount-sw-update'));
         }
       });
     });
@@ -48,7 +48,7 @@ createRoot(document.getElementById('root')!).render(
 
 setTimeout(() => {
   try {
-    sessionStorage.removeItem('caloriq_sw_cache_reset_done');
+    sessionStorage.removeItem('forkcount_sw_cache_reset_done');
   } catch {
     // ignore
   }

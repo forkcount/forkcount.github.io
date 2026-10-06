@@ -4,7 +4,7 @@ import path from 'path';
 import { safeOutboundFetch } from './ssrfGuard.js';
 
 const RESEND_API_URL = 'https://api.resend.com/emails';
-const DEFAULT_FROM = 'Caloriq <onboarding@resend.dev>';
+const DEFAULT_FROM = 'ForkCount <onboarding@resend.dev>';
 const DEVELOPER_EMAIL = process.env.CONTACT_EMAIL || 'housefly@mail2world.com';
 
 interface VerificationEntry {
@@ -238,10 +238,10 @@ export async function createAndSendVerificationCode(
 
   const purposeTitle =
     purpose === 'password_reset'
-      ? 'Your Caloriq password reset code'
+      ? 'Your ForkCount password reset code'
       : purpose === 'new_device'
-      ? 'Your Caloriq sign-in verification code'
-      : 'Your Caloriq verification code';
+      ? 'Your ForkCount sign-in verification code'
+      : 'Your ForkCount verification code';
 
   const text = `${purposeTitle}: ${code}\n\nThis code expires in 10 minutes.`;
   const html = `
@@ -330,7 +330,7 @@ export function validateVerificationCode(
 
 export async function sendWelcomeEmail(rawEmail: string): Promise<void> {
   const email = rawEmail.toLowerCase().trim();
-  const line = 'Welcome to Caloriq. Log your first meal to start your streak.';
+  const line = 'Welcome to ForkCount. Log your first meal to start your streak.';
   const html = `
     <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 420px; margin: 0 auto; padding: 24px; background-color: #09090b; color: #f4f4f5; border-radius: 16px; border: 1px solid #27272a;">
       <p style="font-size: 14px; color: #f4f4f5; line-height: 1.6; margin: 0;">${line}</p>
@@ -339,7 +339,7 @@ export async function sendWelcomeEmail(rawEmail: string): Promise<void> {
 
   await sendResendEmail({
     to: email,
-    subject: 'Welcome to Caloriq',
+    subject: 'Welcome to ForkCount',
     text: line,
     html
   });
@@ -347,7 +347,7 @@ export async function sendWelcomeEmail(rawEmail: string): Promise<void> {
 
 export async function sendSuspiciousLoginAlertEmail(rawEmail: string): Promise<ResendDetailedResult> {
   const email = rawEmail.toLowerCase().trim();
-  const line = "Someone tried to sign in to your Caloriq account. If this wasn't you, reset your password.";
+  const line = "Someone tried to sign in to your ForkCount account. If this wasn't you, reset your password.";
   const html = `
     <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 420px; margin: 0 auto; padding: 24px; background-color: #09090b; color: #f4f4f5; border-radius: 16px; border: 1px solid #27272a;">
       <p style="font-size: 14px; color: #f4f4f5; line-height: 1.6; margin: 0;">${line}</p>
@@ -356,7 +356,7 @@ export async function sendSuspiciousLoginAlertEmail(rawEmail: string): Promise<R
 
   return sendResendEmailDetailed({
     to: email,
-    subject: 'Security Alert: Sign-in attempts on your Caloriq account',
+    subject: 'Security Alert: Sign-in attempts on your ForkCount account',
     text: line,
     html
   });
@@ -369,10 +369,10 @@ export async function sendDevTestEmail(
   const email = rawEmail.toLowerCase().trim();
   if (templateType === 'verification_code') {
     const sampleCode = crypto.randomInt(100000, 1000000).toString();
-    const text = `Your Caloriq verification code is: ${sampleCode}\n\nThis code expires in 10 minutes.`;
+    const text = `Your ForkCount verification code is: ${sampleCode}\n\nThis code expires in 10 minutes.`;
     const html = `
       <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 420px; margin: 0 auto; padding: 24px; background-color: #09090b; color: #f4f4f5; border-radius: 16px; border: 1px solid #27272a;">
-        <p style="font-size: 14px; color: #a1a1aa; margin: 0 0 12px 0;">Your Caloriq verification code (Test)</p>
+        <p style="font-size: 14px; color: #a1a1aa; margin: 0 0 12px 0;">Your ForkCount verification code (Test)</p>
         <div style="font-family: monospace; font-size: 28px; font-weight: 700; letter-spacing: 6px; color: #2dd4bf; background-color: #18181b; padding: 14px 18px; border-radius: 12px; text-align: center; border: 1px solid #27272a; margin-bottom: 16px;">
           ${sampleCode}
         </div>
@@ -381,7 +381,7 @@ export async function sendDevTestEmail(
     `.trim();
     return sendResendEmailDetailed({
       to: email,
-      subject: '[Test] Your Caloriq verification code',
+      subject: '[Test] Your ForkCount verification code',
       text,
       html
     });
@@ -389,10 +389,10 @@ export async function sendDevTestEmail(
 
   if (templateType === 'password_reset') {
     const sampleCode = crypto.randomInt(100000, 1000000).toString();
-    const text = `Your Caloriq password reset code is: ${sampleCode}\n\nThis code expires in 10 minutes.`;
+    const text = `Your ForkCount password reset code is: ${sampleCode}\n\nThis code expires in 10 minutes.`;
     const html = `
       <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 420px; margin: 0 auto; padding: 24px; background-color: #09090b; color: #f4f4f5; border-radius: 16px; border: 1px solid #27272a;">
-        <p style="font-size: 14px; color: #a1a1aa; margin: 0 0 12px 0;">Reset your Caloriq password (Test)</p>
+        <p style="font-size: 14px; color: #a1a1aa; margin: 0 0 12px 0;">Reset your ForkCount password (Test)</p>
         <div style="font-family: monospace; font-size: 28px; font-weight: 700; letter-spacing: 6px; color: #2dd4bf; background-color: #18181b; padding: 14px 18px; border-radius: 12px; text-align: center; border: 1px solid #27272a; margin-bottom: 16px;">
           ${sampleCode}
         </div>
@@ -401,14 +401,14 @@ export async function sendDevTestEmail(
     `.trim();
     return sendResendEmailDetailed({
       to: email,
-      subject: '[Test] Reset your Caloriq password',
+      subject: '[Test] Reset your ForkCount password',
       text,
       html
     });
   }
 
   if (templateType === 'welcome') {
-    const line = 'Welcome to Caloriq. Log your first meal to start your streak.';
+    const line = 'Welcome to ForkCount. Log your first meal to start your streak.';
     const html = `
       <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 420px; margin: 0 auto; padding: 24px; background-color: #09090b; color: #f4f4f5; border-radius: 16px; border: 1px solid #27272a;">
         <p style="font-size: 14px; color: #f4f4f5; line-height: 1.6; margin: 0;">${line}</p>
@@ -416,24 +416,24 @@ export async function sendDevTestEmail(
     `.trim();
     return sendResendEmailDetailed({
       to: email,
-      subject: '[Test] Welcome to Caloriq',
+      subject: '[Test] Welcome to ForkCount',
       text: line,
       html
     });
   }
 
   if (templateType === 'weekly_recap') {
-    const text = 'Caloriq Weekly Recap (Test)\nDays Logged: 6/7\nAverage Daily Intake: 1,920 kcal\nAverage Protein: 148g/day';
+    const text = 'ForkCount Weekly Recap (Test)\nDays Logged: 6/7\nAverage Daily Intake: 1,920 kcal\nAverage Protein: 148g/day';
     const html = `
       <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 520px; margin: 0 auto; padding: 24px; background-color: #09090b; color: #f4f4f5; border-radius: 16px; border: 1px solid #27272a;">
-        <p style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: #2dd4bf; margin: 0 0 6px 0;">Caloriq Weekly Recap (Test)</p>
+        <p style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: #2dd4bf; margin: 0 0 6px 0;">ForkCount Weekly Recap (Test)</p>
         <h2 style="margin: 0 0 12px 0; font-size: 18px; color: #f4f4f5;">Weekly Nutrition Summary</h2>
         <p style="font-size: 13px; color: #e4e4e7; margin: 0;">Days Logged: 6/7 · Avg Intake: 1,920 kcal · Avg Protein: 148g/day</p>
       </div>
     `.trim();
     return sendResendEmailDetailed({
       to: email,
-      subject: '[Test] Your Caloriq Weekly Recap',
+      subject: '[Test] Your ForkCount Weekly Recap',
       text,
       html
     });
@@ -453,10 +453,10 @@ export async function createAndSendPasswordResetEmail(
   const baseUrl = (process.env.APP_URL || appOrigin || 'http://localhost:3000').replace(/\/+$/, '');
   const resetLink = `${baseUrl}/?resetToken=${encodeURIComponent(token)}&email=${encodeURIComponent(email)}`;
 
-  const text = `Reset your Caloriq password using this link:\n\n${resetLink}\n\nThis link expires in 1 hour.`;
+  const text = `Reset your ForkCount password using this link:\n\n${resetLink}\n\nThis link expires in 1 hour.`;
   const html = `
     <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 420px; margin: 0 auto; padding: 24px; background-color: #09090b; color: #f4f4f5; border-radius: 16px; border: 1px solid #27272a;">
-      <p style="font-size: 14px; color: #a1a1aa; margin: 0 0 16px 0;">Reset your Caloriq password</p>
+      <p style="font-size: 14px; color: #a1a1aa; margin: 0 0 16px 0;">Reset your ForkCount password</p>
       <div style="margin-bottom: 16px;">
         <a href="${resetLink}" style="display: inline-block; background-color: #14b8a6; color: #09090b; font-weight: 600; font-size: 13px; text-decoration: none; padding: 10px 18px; border-radius: 10px;">
           Reset password
@@ -469,7 +469,7 @@ export async function createAndSendPasswordResetEmail(
 
   await sendResendEmail({
     to: email,
-    subject: 'Reset your Caloriq password',
+    subject: 'Reset your ForkCount password',
     text,
     html
   });
@@ -508,10 +508,10 @@ export async function sendContactMessageEmail(payload: {
   subject: string;
   message: string;
 }): Promise<boolean> {
-  const text = `New Caloriq contact message\nFrom: ${payload.name} (${payload.email})\nSubject: ${payload.subject}\n\n${payload.message}`;
+  const text = `New ForkCount contact message\nFrom: ${payload.name} (${payload.email})\nSubject: ${payload.subject}\n\n${payload.message}`;
   const html = `
     <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 520px; margin: 0 auto; padding: 24px; background-color: #09090b; color: #f4f4f5; border-radius: 16px; border: 1px solid #27272a;">
-      <h3 style="margin: 0 0 12px 0; color: #2dd4bf;">Caloriq Contact Form</h3>
+      <h3 style="margin: 0 0 12px 0; color: #2dd4bf;">ForkCount Contact Form</h3>
       <p style="font-size: 13px; color: #a1a1aa; margin: 0 0 8px 0;"><strong>From:</strong> ${payload.name} (${payload.email})</p>
       <p style="font-size: 13px; color: #a1a1aa; margin: 0 0 16px 0;"><strong>Subject:</strong> ${payload.subject}</p>
       <div style="padding: 14px; background-color: #18181b; border-radius: 12px; border: 1px solid #27272a; font-size: 13px; line-height: 1.6; color: #f4f4f5;">
@@ -522,7 +522,7 @@ export async function sendContactMessageEmail(payload: {
 
   return sendResendEmail({
     to: DEVELOPER_EMAIL,
-    subject: `[Caloriq Contact] ${payload.subject}`,
+    subject: `[ForkCount Contact] ${payload.subject}`,
     text,
     html
   });
@@ -530,11 +530,11 @@ export async function sendContactMessageEmail(payload: {
 
 // #74 Uptime alert email via Resend
 export async function sendUptimeAlertEmail(reason: string): Promise<boolean> {
-  const text = `Caloriq Uptime Monitor Alert: ${reason} at ${new Date().toISOString()}`;
-  const html = `<p><strong>Caloriq Uptime Alert:</strong> ${reason}</p><p>Timestamp: ${new Date().toISOString()}</p>`;
+  const text = `ForkCount Uptime Monitor Alert: ${reason} at ${new Date().toISOString()}`;
+  const html = `<p><strong>ForkCount Uptime Alert:</strong> ${reason}</p><p>Timestamp: ${new Date().toISOString()}</p>`;
   return sendResendEmail({
     to: DEVELOPER_EMAIL,
-    subject: '[Caloriq Alert] Service Health Check Warning',
+    subject: '[ForkCount Alert] Service Health Check Warning',
     text,
     html
   });
@@ -557,7 +557,7 @@ export async function sendWeeklySundayAiReportEmail(payload: {
     .map((line) => `<li style="margin-bottom: 8px; color: #e4e4e7;">${line}</li>`)
     .join('');
   const text = [
-    `Caloriq Sunday Weekly AI Report for ${payload.userName}`,
+    `ForkCount Sunday Weekly AI Report for ${payload.userName}`,
     `Days Logged: ${payload.weekSummary.daysLogged}/7`,
     `Average Daily Intake: ${payload.weekSummary.avgCalories} kcal (Target: ${payload.weekSummary.targetCalories} kcal)`,
     `Average Protein: ${payload.weekSummary.avgProtein}g/day`,
@@ -568,7 +568,7 @@ export async function sendWeeklySundayAiReportEmail(payload: {
 
   const html = `
     <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 520px; margin: 0 auto; padding: 24px; background-color: #09090b; color: #f4f4f5; border-radius: 16px; border: 1px solid #27272a;">
-      <p style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: #2dd4bf; margin: 0 0 6px 0;">Caloriq Sunday Digest</p>
+      <p style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: #2dd4bf; margin: 0 0 6px 0;">ForkCount Sunday Digest</p>
       <h2 style="margin: 0 0 16px 0; font-size: 20px; color: #f4f4f5;">Weekly AI Nutrition Report</h2>
       <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 18px; padding: 12px; background-color: #18181b; border-radius: 12px; border: 1px solid #27272a; font-size: 12px;">
         <div><strong style="color: #2dd4bf;">${payload.weekSummary.daysLogged}/7</strong><br/><span style="color: #a1a1aa;">Days Logged</span></div>
@@ -584,7 +584,7 @@ export async function sendWeeklySundayAiReportEmail(payload: {
 
   return sendResendEmail({
     to: recipient,
-    subject: 'Your Caloriq Sunday Weekly AI Report',
+    subject: 'Your ForkCount Sunday Weekly AI Report',
     text,
     html
   });

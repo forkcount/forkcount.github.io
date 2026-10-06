@@ -412,11 +412,13 @@ type ViewType =
 
 function hasStoredNonGuestToken(): boolean {
   try {
-    if (localStorage.getItem('calory_dev_device') !== null) {
+    if (localStorage.getItem('forkcount_dev_device') !== null || localStorage.getItem('calory_dev_device') !== null) {
       return true;
     }
     const token =
+      localStorage.getItem('forkcount_session_token') ||
       localStorage.getItem('caloriq_session_token') ||
+      sessionStorage.getItem('forkcount_session_token') ||
       sessionStorage.getItem('caloriq_session_token');
     return Boolean(
       token &&
@@ -492,7 +494,7 @@ export default function App() {
 
   // #47 Cookie / Local Storage first-visit notice
   const [showStorageBanner, setShowStorageBanner] = useState<boolean>(() => {
-    return !localStorage.getItem('caloriq_cookie_consent_at');
+    return !localStorage.getItem('forkcount_cookie_consent_at') && !localStorage.getItem('caloriq_cookie_consent_at');
   });
 
   // #20, #21, #22 Custom PWA install prompt (after 2nd visit, hidden if installed or dismissed)
@@ -541,8 +543,8 @@ export default function App() {
   // #59 & #62 Capture global errors and console.error ring buffer for bug reports
   useEffect(() => {
     const w = window as any;
-    if (!Array.isArray(w.__caloriqConsoleErrors)) {
-      w.__caloriqConsoleErrors = [];
+    if (!Array.isArray(w.__forkcountConsoleErrors)) {
+      w.__forkcountConsoleErrors = [];
       const origError = console.error;
       console.error = (...args: any[]) => {
         try {
@@ -550,9 +552,9 @@ export default function App() {
             .map((a) => (typeof a === 'string' ? a : a?.message || JSON.stringify(a)))
             .join(' ')
             .slice(0, 300);
-          w.__caloriqConsoleErrors.push(`${new Date().toISOString()}: ${msg}`);
-          if (w.__caloriqConsoleErrors.length > 10) {
-            w.__caloriqConsoleErrors.shift();
+          w.__forkcountConsoleErrors.push(`${new Date().toISOString()}: ${msg}`);
+          if (w.__forkcountConsoleErrors.length > 10) {
+            w.__forkcountConsoleErrors.shift();
           }
         } catch {
           // ignore
@@ -563,14 +565,14 @@ export default function App() {
 
     const onGlobalError = (event: ErrorEvent) => {
       try {
-        w.__caloriqConsoleErrors.push(`Uncaught: ${event.message || 'Error'}`);
+        w.__forkcountConsoleErrors.push(`Uncaught: ${event.message || 'Error'}`);
       } catch {
         // ignore
       }
     };
     const onUnhandledRejection = (event: PromiseRejectionEvent) => {
       try {
-        w.__caloriqConsoleErrors.push(`UnhandledRejection: ${String(event.reason)}`);
+        w.__forkcountConsoleErrors.push(`UnhandledRejection: ${String(event.reason)}`);
       } catch {
         // ignore
       }
@@ -585,13 +587,13 @@ export default function App() {
 
   // #20, #21, #22 Visit counter & PWA install prompt detection + #24 SW update toast + #83 Maintenance check
   useEffect(() => {
-    const visits = Number(localStorage.getItem('caloriq_visit_count') || '0') + 1;
-    localStorage.setItem('caloriq_visit_count', String(visits));
+    const visits = Number(localStorage.getItem('forkcount_visit_count') || localStorage.getItem('caloriq_visit_count') || '0') + 1;
+    localStorage.setItem('forkcount_visit_count', String(visits));
 
     const isStandalone =
       window.matchMedia?.('(display-mode: standalone)').matches ||
       (window.navigator as any).standalone === true;
-    const isDismissed = localStorage.getItem('caloriq_pwa_dismissed') === 'true';
+    const isDismissed = localStorage.getItem('forkcount_pwa_dismissed') === 'true' || localStorage.getItem('caloriq_pwa_dismissed') === 'true';
 
     const ua = window.navigator.userAgent;
     const ios = /iPad|iPhone|iPod/.test(ua) && !(window as any).MSStream;
@@ -612,7 +614,7 @@ export default function App() {
     window.addEventListener('beforeinstallprompt', handleBeforeInstall);
 
     const handleSwUpdate = () => setSwUpdateAvailable(true);
-    window.addEventListener('caloriq-sw-update', handleSwUpdate);
+    window.addEventListener('forkcount-sw-update', handleSwUpdate);
 
     fetch('/api/health')
       .then((r) => r.json())
@@ -620,7 +622,7 @@ export default function App() {
         if (data?.maintenanceMode) {
           setMaintenanceInfo({
             active: true,
-            message: data.maintenanceMessage || 'Calory is undergoing scheduled maintenance.'
+            message: data.maintenanceMessage || 'ForkCount is undergoing scheduled maintenance.'
           });
         }
       })
@@ -628,7 +630,7 @@ export default function App() {
 
     return () => {
       window.removeEventListener('beforeinstallprompt', handleBeforeInstall);
-      window.removeEventListener('caloriq-sw-update', handleSwUpdate);
+      window.removeEventListener('forkcount-sw-update', handleSwUpdate);
     };
   }, []);
 
@@ -705,7 +707,7 @@ export default function App() {
 
   const handleDismissPwaBanner = () => {
     setShowPwaBanner(false);
-    localStorage.setItem('caloriq_pwa_dismissed', 'true');
+    localStorage.setItem('forkcount_pwa_dismissed', 'true');
   };
 
   const handleTriggerPwaInstall = async () => {
@@ -851,11 +853,11 @@ export default function App() {
         <div className="fixed bottom-16 left-1/2 -translate-x-1/2 z-[80] max-w-md w-[94%] bg-zinc-900 border border-teal-500/40 rounded-2xl p-4 shadow-2xl space-y-2.5 no-print">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <h4 className="text-xs font-bold text-zinc-100">Install Calory to Home Screen</h4>
+              <h4 className="text-xs font-bold text-zinc-100">Install ForkCount to Home Screen</h4>
               <p className="text-[11px] text-zinc-300 mt-0.5 leading-relaxed">
                 {isIosSafari
                   ? 'On iOS Safari: tap the Share button at the bottom of your screen, then choose "Add to Home Screen".'
-                  : 'Install Calory for instant offline logging and a clean full-screen experience.'}
+                  : 'Install ForkCount for instant offline logging and a clean full-screen experience.'}
               </p>
             </div>
             <button
@@ -887,7 +889,7 @@ export default function App() {
           className="fixed bottom-3 left-1/2 -translate-x-1/2 z-[85] max-w-lg w-[94%] bg-zinc-900/95 backdrop-blur-md border border-zinc-800 rounded-2xl p-3.5 shadow-2xl flex flex-col sm:flex-row items-center justify-between gap-3 no-print"
         >
           <p className="text-xs text-zinc-300 leading-relaxed text-center sm:text-left">
-            Calory uses local storage to keep you signed in and remember your preferences. No tracking cookies.{' '}
+            ForkCount uses local storage to keep you signed in and remember your preferences. No tracking cookies.{' '}
             <a
               href="/cookies"
               onClick={(e) => {

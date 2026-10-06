@@ -25,9 +25,9 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
         msg.includes("reading 'useEffect'") ||
         msg.includes('Invalid hook call')) &&
       typeof window !== 'undefined' &&
-      !sessionStorage.getItem('caloriq_sw_cache_reset_done')
+      !sessionStorage.getItem('forkcount_sw_cache_reset_done')
     ) {
-      sessionStorage.setItem('caloriq_sw_cache_reset_done', '1');
+      sessionStorage.setItem('forkcount_sw_cache_reset_done', '1');
       const cleanup: Promise<any>[] = [];
       if ('caches' in window) {
         cleanup.push(

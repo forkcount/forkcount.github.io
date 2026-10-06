@@ -54,7 +54,7 @@ const CATALOG = [
     name: 'Foundations',
     tagline: 'Eight weeks of measured fat loss',
     description:
-      'The core Calory program for losing weight without guessing. You set your targets from your own measurements, log against them, and the weekly report shows whether the plan is working. Nothing is banned, and nothing is promised that your own data cannot show.',
+      'The core ForkCount program for losing weight without guessing. You set your targets from your own measurements, log against them, and the weekly report shows whether the plan is working. Nothing is banned, and nothing is promised that your own data cannot show.',
     category: 'program',
     goal: 'lose',
     durationWeeks: 8,
@@ -160,7 +160,7 @@ const CAPABILITIES = [
   {
     icon: MessagesSquare,
     title: 'Chat with the developer',
-    body: 'Suggestions, bugs and requests go straight to the person who builds Calory, not into a support queue.'
+    body: 'Suggestions, bugs and requests go straight to the person who builds ForkCount, not into a support queue.'
   },
   {
     icon: Users,
@@ -183,7 +183,7 @@ const STANDARDS = [
   {
     icon: ShieldCheck,
     title: 'No claims we cannot show you',
-    body: 'Calory is a tracking tool. We do not diagnose, treat or promise an outcome, and we do not describe anything in the app as clinical.'
+    body: 'ForkCount is a tracking tool. We do not diagnose, treat or promise an outcome, and we do not describe anything in the app as clinical.'
   },
   {
     icon: Info,
@@ -209,9 +209,9 @@ const FAQ = [
       'Nothing. The diary, calorie ring, macronutrients, water tracking, weekly reporting, the BMR calculator and the community are free, and every program and guide in the catalog is free too. There is no card to enter and nothing that renews.'
   },
   {
-    question: 'Is Calory medical treatment?',
+    question: 'Is ForkCount medical treatment?',
     answer:
-      'It is not. Calory is a calorie and macronutrient tracker with a target calculated from your own body. It does not diagnose or treat anything, and it is not a substitute for advice from your doctor.'
+      'It is not. ForkCount is a calorie and macronutrient tracker with a target calculated from your own body. It does not diagnose or treat anything, and it is not a substitute for advice from your doctor.'
   },
   {
     question: 'Who sets my targets?',
@@ -268,10 +268,10 @@ export function DescriptionPage({
         <header className="flex items-center justify-between py-6">
           <div className="flex items-center gap-2.5">
             <span className="flex size-7 items-center justify-center rounded-full border border-teal-500/30 bg-teal-500/10 text-[12px] font-semibold text-teal-400">
-              C
+              F
             </span>
             <span className="font-display text-xl font-semibold tracking-tight text-zinc-100">
-              Calory
+              ForkCount
             </span>
           </div>
 
@@ -759,7 +759,7 @@ export function DescriptionPage({
                 Asked before joining
               </h2>
               <p className="mt-4 text-sm leading-relaxed text-zinc-400">
-                Clear answers about cost, safety, target calculation, and who builds Calory.
+                Clear answers about cost, safety, target calculation, and who builds ForkCount.
               </p>
             </div>
 
@@ -812,7 +812,7 @@ export function DescriptionPage({
                 onClick={() => onOpenApp('guest')}
                 className="flex h-12 items-center gap-2 rounded-xl bg-teal-500 px-6 font-semibold text-zinc-950 shadow-lg shadow-teal-500/25 transition-all hover:bg-teal-400 active:scale-95"
               >
-                <span>Open Calory Tracker</span>
+                <span>Open ForkCount Tracker</span>
                 <ArrowRight className="size-4" />
               </button>
             </div>
@@ -824,9 +824,9 @@ export function DescriptionPage({
           <div className="flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
             <div className="flex items-center gap-2.5">
               <span className="flex size-6 items-center justify-center rounded-full border border-teal-500/30 bg-teal-500/10 text-[10px] font-semibold text-teal-400">
-                C
+                F
               </span>
-              <span className="text-zinc-300">&copy; {new Date().getFullYear()} Calory — calorie and macro tracking.</span>
+              <span className="text-zinc-300">&copy; {new Date().getFullYear()} ForkCount — calorie and macro tracking.</span>
             </div>
 
             <div className="flex flex-wrap items-center gap-2 text-zinc-400">
@@ -912,13 +912,13 @@ export function DescriptionPage({
 
           <div className="space-y-1.5 text-zinc-400">
             <p className="leading-relaxed">
-              Calory provides weight-management tracking tools and is not a medical provider. Speak to your doctor before changing how you eat or train.
+              ForkCount provides weight-management tracking tools and is not a medical provider. Speak to your doctor before changing how you eat or train.
             </p>
             <p className="leading-relaxed">
-              If you&apos;re under 18, use Calory with a parent or guardian.
+              If you&apos;re under 18, use ForkCount with a parent or guardian.
             </p>
             <p className="leading-relaxed">
-              Calory uses local storage to keep you signed in and remember your theme. It does not use tracking cookies. See our{' '}
+              ForkCount uses local storage to keep you signed in and remember your theme. It does not use tracking cookies. See our{' '}
               <a
                 href="/privacy"
                 onClick={(e) => {

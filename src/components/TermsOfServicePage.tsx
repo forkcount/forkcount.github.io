@@ -20,17 +20,17 @@ export const TermsOfServicePage: React.FC<TermsOfServicePageProps> = ({
         <div className="max-w-3xl mx-auto flex items-center justify-between gap-4">
           <div className="flex items-center gap-2">
             <span className="w-2.5 h-2.5 rounded-full bg-teal-400 inline-block" aria-hidden="true" />
-            <span className="font-bold text-lg tracking-tight text-zinc-100">Caloriq</span>
+            <span className="font-bold text-lg tracking-tight text-zinc-100">ForkCount</span>
           </div>
 
           <button
             type="button"
             onClick={onBackToLanding}
-            aria-label="Back to Caloriq home"
+            aria-label="Back to ForkCount home"
             className="text-xs font-medium text-teal-400 hover:text-teal-300 flex items-center gap-1.5 transition-colors cursor-pointer"
           >
             <ArrowLeft className="w-3.5 h-3.5" aria-hidden="true" />
-            Back to Caloriq
+            Back to ForkCount
           </button>
         </div>
       </header>
@@ -49,30 +49,30 @@ export const TermsOfServicePage: React.FC<TermsOfServicePageProps> = ({
 
         <div className="space-y-6 text-sm text-zinc-300 leading-relaxed">
           <section className="space-y-2">
-            <h2 className="text-base font-bold text-zinc-100">1. What Caloriq Is</h2>
+            <h2 className="text-base font-bold text-zinc-100">1. What ForkCount Is</h2>
             <p>
-              Caloriq is a self-guided calorie, macronutrient, hydration, and exercise tracking web application. By accessing or using Caloriq, you agree to these Terms of Service.
+              ForkCount is a self-guided calorie, macronutrient, hydration, and exercise tracking web application. By accessing or using ForkCount, you agree to these Terms of Service.
             </p>
           </section>
 
           <section className="space-y-2">
             <h2 className="text-base font-bold text-zinc-100">2. Medical Disclaimer (#48)</h2>
             <p>
-              <strong>Caloriq is not a medical device and does not provide medical advice, diagnosis, or treatment.</strong> Calorie targets, Mifflin-St Jeor BMR calculations, macro splits, and weekly summaries are general informational estimates. Always consult a qualified physician or registered dietitian before starting any diet, fasting protocol, or exercise program, especially if you are pregnant, nursing, managing a medical condition, or have a history of disordered eating.
+              <strong>ForkCount is not a medical device and does not provide medical advice, diagnosis, or treatment.</strong> Calorie targets, Mifflin-St Jeor BMR calculations, macro splits, and weekly summaries are general informational estimates. Always consult a qualified physician or registered dietitian before starting any diet, fasting protocol, or exercise program, especially if you are pregnant, nursing, managing a medical condition, or have a history of disordered eating.
             </p>
           </section>
 
           <section className="space-y-2">
             <h2 className="text-base font-bold text-zinc-100">3. AI Nutrition Estimates Disclosure (#49)</h2>
             <p>
-              Caloriq includes AI-assisted food and meal estimation powered by Google Gemini and local reference databases. <strong>AI estimates are approximate and not medical or clinical nutritional advice.</strong> Actual calories and macronutrients vary by brand, preparation method, cooking oils, and exact portion weight. You can review and edit every gram and calorie value before saving.
+              ForkCount includes AI-assisted food and meal estimation powered by Google Gemini and local reference databases. <strong>AI estimates are approximate and not medical or clinical nutritional advice.</strong> Actual calories and macronutrients vary by brand, preparation method, cooking oils, and exact portion weight. You can review and edit every gram and calorie value before saving.
             </p>
           </section>
 
           <section className="space-y-2">
             <h2 className="text-base font-bold text-zinc-100">4. Age Requirements (#50)</h2>
             <p>
-              You must be at least <strong>13 years of age</strong> to create an account or use Caloriq. If you are between 13 and 18 years old, you must review these Terms with a parent or guardian and use Caloriq under their supervision.
+              You must be at least <strong>13 years of age</strong> to create an account or use ForkCount. If you are between 13 and 18 years old, you must review these Terms with a parent or guardian and use ForkCount under their supervision.
             </p>
           </section>
 
@@ -86,7 +86,7 @@ export const TermsOfServicePage: React.FC<TermsOfServicePageProps> = ({
           <section className="space-y-2">
             <h2 className="text-base font-bold text-zinc-100">6. Limitation of Liability</h2>
             <p>
-              Caloriq is provided &quot;as is&quot; and &quot;as available&quot; without warranties of any kind. To the maximum extent permitted by applicable law, Caloriq and its creator shall not be liable for any indirect, incidental, or consequential damages arising from your use of the app or reliance on nutrition estimates.
+              ForkCount is provided &quot;as is&quot; and &quot;as available&quot; without warranties of any kind. To the maximum extent permitted by applicable law, ForkCount and its creator shall not be liable for any indirect, incidental, or consequential damages arising from your use of the app or reliance on nutrition estimates.
             </p>
           </section>
 

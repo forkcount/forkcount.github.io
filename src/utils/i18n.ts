@@ -7,7 +7,7 @@ export const SUPPORTED_LOCALES: Array<{ code: SupportedLocale; label: string; na
   { code: 'de', label: 'German', nativeName: 'Deutsch' }
 ];
 
-const LOCALE_STORAGE_KEY = 'caloriq_locale';
+const LOCALE_STORAGE_KEY = 'forkcount_locale';
 
 export type TranslationKey =
   | 'nav.diary'
@@ -84,13 +84,13 @@ export const STRINGS: Record<SupportedLocale, Record<TranslationKey, string>> = 
     'me.signOutAll': 'Sign out all devices',
     'me.changeEmail': 'Change email address',
     'me.changePassword': 'Change password',
-    'me.version': 'Calory v1.0.0',
+    'me.version': 'ForkCount v1.0.0',
     'error.404Title': "This page doesn't exist.",
     'error.404Body': "This page doesn't exist. Back to your diary.",
     'error.500Body': "Something's wrong on our end. Try again in a minute.",
-    'pwa.installTitle': 'Install Calory',
-    'pwa.installBody': 'Add Calory to your home screen for instant offline access and full-screen tracking.',
-    'pwa.installBtn': 'Install Calory',
+    'pwa.installTitle': 'Install ForkCount',
+    'pwa.installBody': 'Add ForkCount to your home screen for instant offline access and full-screen tracking.',
+    'pwa.installBtn': 'Install ForkCount',
     'cookie.bannerText': 'We use essential local storage for sign-in and optional privacy-friendly analytics (no tracking cookies or health data).',
     'cookie.accept': 'Accept',
     'cookie.decline': 'Decline',
@@ -127,13 +127,13 @@ export const STRINGS: Record<SupportedLocale, Record<TranslationKey, string>> = 
     'me.signOutAll': 'Cerrar sesión en todos los dispositivos',
     'me.changeEmail': 'Cambiar correo electrónico',
     'me.changePassword': 'Cambiar contraseña',
-    'me.version': 'Calory v1.0.0',
+    'me.version': 'ForkCount v1.0.0',
     'error.404Title': 'Esta página no existe.',
     'error.404Body': 'Esta página no existe. Volver a tu diario.',
     'error.500Body': 'Algo salió mal de nuestro lado. Inténtalo de nuevo en un minuto.',
-    'pwa.installTitle': 'Instalar Calory',
-    'pwa.installBody': 'Añade Calory a tu pantalla de inicio para acceso sin conexión y pantalla completa.',
-    'pwa.installBtn': 'Instalar Calory',
+    'pwa.installTitle': 'Instalar ForkCount',
+    'pwa.installBody': 'Añade ForkCount a tu pantalla de inicio para acceso sin conexión y pantalla completa.',
+    'pwa.installBtn': 'Instalar ForkCount',
     'cookie.bannerText': 'Usamos almacenamiento local esencial para iniciar sesión y analíticas privadas opcionales (sin cookies de rastreo ni datos de salud).',
     'cookie.accept': 'Aceptar',
     'cookie.decline': 'Rechazar',
@@ -170,13 +170,13 @@ export const STRINGS: Record<SupportedLocale, Record<TranslationKey, string>> = 
     'me.signOutAll': 'Se déconnecter de tous les appareils',
     'me.changeEmail': "Changer d'adresse e-mail",
     'me.changePassword': 'Changer le mot de passe',
-    'me.version': 'Calory v1.0.0',
+    'me.version': 'ForkCount v1.0.0',
     'error.404Title': "Cette page n'existe pas.",
     'error.404Body': "Cette page n'existe pas. Retour à votre journal.",
     'error.500Body': 'Un problème est survenu de notre côté. Réessayez dans une minute.',
-    'pwa.installTitle': 'Installer Calory',
-    'pwa.installBody': "Ajoutez Calory à votre écran d'accueil pour un suivi hors ligne en plein écran.",
-    'pwa.installBtn': 'Installer Calory',
+    'pwa.installTitle': 'Installer ForkCount',
+    'pwa.installBody': "Ajoutez ForkCount à votre écran d'accueil pour un suivi hors ligne en plein écran.",
+    'pwa.installBtn': 'Installer ForkCount',
     'cookie.bannerText': 'Nous utilisons le stockage local essentiel pour la connexion et des analyses respectueuses de la vie privée (sans cookies de suivi).',
     'cookie.accept': 'Accepter',
     'cookie.decline': 'Refuser',
@@ -213,13 +213,13 @@ export const STRINGS: Record<SupportedLocale, Record<TranslationKey, string>> = 
     'me.signOutAll': 'Auf allen Geräten abmelden',
     'me.changeEmail': 'E-Mail-Adresse ändern',
     'me.changePassword': 'Passwort ändern',
-    'me.version': 'Calory v1.0.0',
+    'me.version': 'ForkCount v1.0.0',
     'error.404Title': 'Diese Seite existiert nicht.',
     'error.404Body': 'Diese Seite existiert nicht. Zurück zu deinem Tagebuch.',
     'error.500Body': 'Auf unserer Seite ist etwas schiefgelaufen. Versuche es in einer Minute erneut.',
-    'pwa.installTitle': 'Calory installieren',
-    'pwa.installBody': 'Füge Calory zu deinem Startbildschirm hinzu für Offline-Nutzung im Vollbildmodus.',
-    'pwa.installBtn': 'Calory installieren',
+    'pwa.installTitle': 'ForkCount installieren',
+    'pwa.installBody': 'Füge ForkCount zu deinem Startbildschirm hinzu für Offline-Nutzung im Vollbildmodus.',
+    'pwa.installBtn': 'ForkCount installieren',
     'cookie.bannerText': 'Wir verwenden lokalen Speicher für die Anmeldung und optionale datenschutzfreundliche Analysen (keine Tracking-Cookies).',
     'cookie.accept': 'Akzeptieren',
     'cookie.decline': 'Ablehnen',
@@ -244,7 +244,7 @@ export function setAppLocale(locale: SupportedLocale): void {
   if (typeof window === 'undefined') return;
   localStorage.setItem(LOCALE_STORAGE_KEY, locale);
   document.documentElement.setAttribute('lang', locale);
-  window.dispatchEvent(new CustomEvent('caloriq-locale-change', { detail: locale }));
+  window.dispatchEvent(new CustomEvent('forkcount-locale-change', { detail: locale }));
 }
 
 export const APP_VERSION = 'v1.0.0';

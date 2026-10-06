@@ -1,4 +1,4 @@
-// Top 1,000 most common passwords rejected by Caloriq password policy
+// Top 1,000 most common passwords rejected by ForkCount password policy
 const COMMON_PASSWORDS_RAW: string[] = [
   '123456', 'password', '12345678', 'qwerty', '123456789', '12345', '1234', '111111', '1234567', 'dragon',
   '123123', 'baseball', 'abc123', 'football', 'monkey', 'letmein', '696969', 'shadow', 'master', '666666',
@@ -135,7 +135,7 @@ const COMMON_PASSWORDS_RAW: string[] = [
   'sidney123', 'byron123', 'julian1', 'julian123', 'isaac123', 'morris123', 'clifton', 'willard', 'daryl123', 'ross1234',
   'virgil123', 'andy1234', 'marshall', 'salvador', 'perry123', 'kirk1234', 'sergio123', 'marion123', 'tracy123', 'seth1234',
   'kent1234', 'terrance', 'rene1234', 'eduardo', 'terrence', 'enrique', 'freddie', 'wade1234', 'austin1', 'austin123',
-  'caloriq', 'caloriq1', 'caloriq123', 'calorie', 'calories', 'fitness', 'fitness1', 'fitness123', 'workout', 'workout1',
+  'forkcount', 'forkcount1', 'forkcount123', 'calorie', 'calories', 'fitness', 'fitness1', 'fitness123', 'workout', 'workout1',
   'workout123', 'healthy', 'healthy1', 'healthy123', 'protein', 'protein1', 'protein123', 'weightloss', 'diet1234', 'nutrition'
 ];
 

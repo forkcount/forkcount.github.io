@@ -48,7 +48,7 @@ export async function generateWeekPlanWithGemini(
       : ['breakfast', 'snack', 'lunch', 'snack', 'dinner'];
 
   const prompt = `
-Generate a personalized, production-quality 7-day plan (Monday through Sunday) for Caloriq tracker.
+Generate a personalized, production-quality 7-day plan (Monday through Sunday) for ForkCount tracker.
 Targets & Constraints:
 - Plan type requested: ${req.type}
 - Daily Target: ${req.dailyTargetCalories} kcal total.

@@ -14,8 +14,8 @@ export const SecretFooter: React.FC<SecretFooterProps> = ({ className = 'pt-2 te
 
     if (index === tapIndex) {
       const nextIndex = tapIndex + 1;
-      if (nextIndex === 15) {
-        // Successfully tapped all 15 characters in sequence!
+      if (nextIndex === 18) {
+        // Successfully tapped all 18 characters in sequence!
         isUnlockingRef.current = true;
         setTapIndex(0);
         await performDevUnlock();
@@ -46,13 +46,16 @@ export const SecretFooter: React.FC<SecretFooterProps> = ({ className = 'pt-2 te
         lockedAt: Date.now()
       };
 
-      // 1. Save "calory_dev_device" to localStorage so this browser never asks again
+      // 1. Save dev device to localStorage so this browser never asks again
       localStorage.setItem(DEV_DEVICE_KEY, JSON.stringify(devRecord));
-      localStorage.setItem('caloriq_session_token', 'usr_545648c7-5e38-44fc-adc5-373e0b3e5e18');
-      localStorage.setItem('caloriq_user_email', 'housefly');
-      localStorage.setItem('caloriq_signup_complete', 'true');
-      localStorage.setItem('caloriq_signup_complete_usr_545648c7-5e38-44fc-adc5-373e0b3e5e18', 'true');
+      localStorage.setItem('forkcount_dev_device', JSON.stringify(devRecord));
+      localStorage.setItem('forkcount_session_token', 'usr_545648c7-5e38-44fc-adc5-373e0b3e5e18');
+      localStorage.setItem('forkcount_user_email', 'housefly');
+      localStorage.setItem('forkcount_signup_complete', 'true');
+      localStorage.setItem('forkcount_signup_complete_usr_545648c7-5e38-44fc-adc5-373e0b3e5e18', 'true');
+      localStorage.removeItem('forkcount_guest_id');
       localStorage.removeItem('caloriq_guest_id');
+      sessionStorage.removeItem('forkcount_is_first_session');
       sessionStorage.removeItem('caloriq_is_first_session');
 
       try {
@@ -110,36 +113,45 @@ export const SecretFooter: React.FC<SecretFooterProps> = ({ className = 'pt-2 te
       </button>
       {' '}
       <button type="button" tabIndex={-1} onClick={() => handleCharTap(5)} style={btnStyle} aria-hidden="true">
-        C
+        F
       </button>
       <button type="button" tabIndex={-1} onClick={() => handleCharTap(6)} style={btnStyle} aria-hidden="true">
-        a
-      </button>
-      <button type="button" tabIndex={-1} onClick={() => handleCharTap(7)} style={btnStyle} aria-hidden="true">
-        l
-      </button>
-      <button type="button" tabIndex={-1} onClick={() => handleCharTap(8)} style={btnStyle} aria-hidden="true">
         o
       </button>
-      <button type="button" tabIndex={-1} onClick={() => handleCharTap(9)} style={btnStyle} aria-hidden="true">
+      <button type="button" tabIndex={-1} onClick={() => handleCharTap(7)} style={btnStyle} aria-hidden="true">
         r
       </button>
-      <button type="button" tabIndex={-1} onClick={() => handleCharTap(10)} style={btnStyle} aria-hidden="true">
-        y
+      <button type="button" tabIndex={-1} onClick={() => handleCharTap(8)} style={btnStyle} aria-hidden="true">
+        k
       </button>
-      {' '}
+      <button type="button" tabIndex={-1} onClick={() => handleCharTap(9)} style={btnStyle} aria-hidden="true">
+        C
+      </button>
+      <button type="button" tabIndex={-1} onClick={() => handleCharTap(10)} style={btnStyle} aria-hidden="true">
+        o
+      </button>
       <button type="button" tabIndex={-1} onClick={() => handleCharTap(11)} style={btnStyle} aria-hidden="true">
-        v
+        u
       </button>
       <button type="button" tabIndex={-1} onClick={() => handleCharTap(12)} style={btnStyle} aria-hidden="true">
+        n
+      </button>
+      <button type="button" tabIndex={-1} onClick={() => handleCharTap(13)} style={btnStyle} aria-hidden="true">
+        t
+      </button>
+      {' '}
+      <button type="button" tabIndex={-1} onClick={() => handleCharTap(14)} style={btnStyle} aria-hidden="true">
+        v
+      </button>
+      <button type="button" tabIndex={-1} onClick={() => handleCharTap(15)} style={btnStyle} aria-hidden="true">
         1
       </button>
       <span>.</span>
-      <button type="button" tabIndex={-1} onClick={() => handleCharTap(13)} style={btnStyle} aria-hidden="true">
+      <button type="button" tabIndex={-1} onClick={() => handleCharTap(16)} style={btnStyle} aria-hidden="true">
         0
       </button>
       <span>.</span>
-      <button type="button" tabIndex={-1} onClick={() => handleCharTap(14)} style={btnStyle} aria-hidden="true">
+      <button type="button" tabIndex={-1} onClick={() => handleCharTap(17)} style={btnStyle} aria-hidden="true">
         0
       </button>
     </div>
