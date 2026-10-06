@@ -1690,14 +1690,47 @@ class ApiService {
     } catch {}
     return { reply };
   }
-  async reportCommunityPost(postId: string, reason = ''): Promise<{ reported: boolean; report: ReportedPostRecord }> {
-    const report: ReportedPostRecord = {
-      id: `rep_${Date.now()}`,
+  async reportCommunityPost(postId: string, reason = ''): Promise<{ reported: boolean; report: any }> {
+    const userId = this.token || 'guest';
+    const reporterUsername = localStorage.getItem(USER_EMAIL_KEY) || 'User';
+
+    let postText = '';
+    let postAuthor = 'user';
+    let imageUrl = '';
+
+    try {
+      const postSnap = await getDoc(doc(db, 'communityPosts', postId));
+      if (postSnap.exists()) {
+        const postData = postSnap.data();
+        postText = postData.text || postData.content || '';
+        postAuthor = postData.username || 'user';
+        imageUrl = postData.imageUrl || '';
+      }
+    } catch (err) {
+      console.warn('Failed to load post for report details, using fallbacks:', err);
+    }
+
+    const id = `rep_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+    const report = {
+      id,
       postId,
-      reportedByUserId: this.token || 'guest',
-      reason,
-      createdAt: Date.now()
+      reportedBy: userId,
+      reportedByUsername: reporterUsername,
+      reporterUsername,
+      postText,
+      postAuthor,
+      imageUrl,
+      reason: reason || 'Inappropriate content',
+      createdAt: Date.now(),
+      status: 'pending'
     };
+
+    try {
+      await setDoc(doc(db, 'reports', id), report);
+    } catch (err) {
+      console.error('Error writing report doc:', err);
+    }
+
     return { reported: true, report };
   }
   async blockCommunityUser(_target: string): Promise<{ blocked: boolean }> {
@@ -1964,17 +1997,74 @@ class ApiService {
   async devSendManualCode(_email: string): Promise<any> {
     return { code: '123456' };
   }
-  async devDeleteUser(_email: string, _confirmEmail?: string): Promise<any> {
-    return { deleted: true, summary: `Deleted user ${_email}`, deletedEmail: _email };
+  async devDeleteUser(emailOrUsername: string, _confirmEmail?: string): Promise<any> {
+    const cleanUsername = emailOrUsername.trim().toLowerCase().replace(/^@/, '');
+    const userId = `usr_${cleanUsername.replace(/[^a-z0-9_]/g, '_')}`;
+    try {
+      await deleteDoc(doc(db, 'users', userId));
+    } catch (err) {
+      console.error('Error deleting user doc:', err);
+    }
+    return { deleted: true, summary: `Deleted user ${cleanUsername}`, deletedEmail: cleanUsername };
   }
   async devGetReportedPosts(): Promise<any> {
-    return { reports: [] };
+    try {
+      const q = query(
+        collection(db, 'reports'),
+        where('status', '==', 'pending')
+      );
+      const snap = await getDocs(q);
+      const reports: any[] = [];
+      snap.forEach((d) => {
+        const data = d.data();
+        reports.push({
+          ...data,
+          post: {
+            id: data.postId,
+            username: data.postAuthor || 'user',
+            text: data.postText || '',
+            imageUrl: data.imageUrl || ''
+          }
+        });
+      });
+      return { reports };
+    } catch (err) {
+      console.error('Error fetching reported posts:', err);
+      return { reports: [] };
+    }
   }
-  async devDeleteCommunityPost(_id: string): Promise<any> {
-    return { success: true };
+  async devDeleteCommunityPost(postId: string): Promise<any> {
+    try {
+      await deleteDoc(doc(db, 'communityPosts', postId));
+
+      const q = query(
+        collection(db, 'reports'),
+        where('postId', '==', postId),
+        where('status', '==', 'pending')
+      );
+      const snap = await getDocs(q);
+      const batchPromises = snap.docs.map((d) =>
+        updateDoc(doc(db, 'reports', d.id), {
+          status: 'resolved',
+          resolvedAt: Date.now()
+        })
+      );
+      await Promise.all(batchPromises);
+    } catch (err) {
+      console.error('Error deleting community post:', err);
+    }
+    return this.devGetReportedPosts();
   }
-  async devDismissCommunityReport(_id: string): Promise<any> {
-    return { success: true };
+  async devDismissCommunityReport(reportId: string): Promise<any> {
+    try {
+      await updateDoc(doc(db, 'reports', reportId), {
+        status: 'resolved',
+        resolvedAt: Date.now()
+      });
+    } catch (err) {
+      console.error('Error dismissing report:', err);
+    }
+    return this.devGetReportedPosts();
   }
 }
 
