@@ -128,10 +128,10 @@ export const MeTab: React.FC<MeTabProps> = ({
   } = useApp();
 
   const getBadgeProgress = (badgeId: string): { current: number; target: number; unit: string } => {
-    const streak = stats.foodStreak || 0;
-    const xpVal = stats.xp || 0;
-    const weighCount = weights.length;
-    const mealCount = allDiaryItems.length;
+    const streak = stats?.foodStreak || 0;
+    const xpVal = stats?.xp || 0;
+    const weighCount = (weights || []).length;
+    const mealCount = (allDiaryItems || []).length;
     const workoutCount = (allExercises || exercises || []).length;
     switch (badgeId) {
       case 'First log':
@@ -185,7 +185,7 @@ export const MeTab: React.FC<MeTabProps> = ({
   const [sessionsList, setSessionsList] = useState<Array<{ id: string; deviceLabel: string; ip: string; createdAt: string; lastActiveAt: string; isCurrent: boolean }>>([]);
   const rawLastSignedInAt = localStorage.getItem('forkcount_last_signed_in_at') || localStorage.getItem('caloriq_last_signed_in_at');
   const formattedLastSignedIn = (() => {
-    const candidate = rawLastSignedInAt || sessionsList.find((s) => s.isCurrent)?.createdAt || sessionsList[0]?.createdAt;
+    const candidate = rawLastSignedInAt || (sessionsList || []).find((s) => s.isCurrent)?.createdAt || (sessionsList || [])[0]?.createdAt;
     if (!candidate || candidate === 'null' || candidate === 'undefined' || candidate === 'first_session') {
       return new Date().toLocaleDateString();
     }
@@ -572,7 +572,7 @@ export const MeTab: React.FC<MeTabProps> = ({
   };
 
   // Weight Trend Line (SVG)
-  const sortedWeights = [...weights].sort((a, b) => a.date.localeCompare(b.date));
+  const sortedWeights = [...(weights || [])].sort((a, b) => (a.date || '').localeCompare(b.date || ''));
   const minWeight = sortedWeights.length > 0 ? Math.min(...sortedWeights.map(w => w.weightKg)) - 1 : 60;
   const maxWeight = sortedWeights.length > 0 ? Math.max(...sortedWeights.map(w => w.weightKg)) + 1 : 75;
   const weightRange = maxWeight - minWeight || 1;
@@ -1050,7 +1050,7 @@ export const MeTab: React.FC<MeTabProps> = ({
             <Trophy className="w-4 h-4 text-teal-400" />
             <h4 className="text-sm font-semibold text-zinc-200">Non-Scale Victories</h4>
           </div>
-          <span className="text-[11px] font-mono text-zinc-500">{victories.length} wins</span>
+          <span className="text-[11px] font-mono text-zinc-500">{(victories || []).length} wins</span>
         </div>
 
         <form onSubmit={handleAddVictory} className="flex gap-2">
@@ -1070,13 +1070,13 @@ export const MeTab: React.FC<MeTabProps> = ({
           </button>
         </form>
 
-        {victories.length === 0 ? (
+        {(victories || []).length === 0 ? (
           <p className="text-xs text-zinc-500 text-center py-2">
             Record private milestones beyond the scale.
           </p>
         ) : (
           <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1">
-            {victories.map((v) => (
+            {(victories || []).map((v) => (
               <SwipeableItem
                 key={v.id}
                 itemTitle={v.text}
@@ -1584,11 +1584,11 @@ export const MeTab: React.FC<MeTabProps> = ({
             <h4 className="text-sm font-semibold text-zinc-200">Badges & Consistency</h4>
           </div>
           <span className="text-xs font-mono text-teal-400 font-bold">
-            Level {stats.level} ({stats.xp} XP)
+            Level {stats?.level || 1} ({stats?.xp || 0} XP)
           </span>
         </div>
 
-        {stats.badges.length === 0 && (
+        {(stats?.badges || []).length === 0 && (
           <p className="text-xs text-zinc-500 bg-zinc-950/60 border border-zinc-800/80 rounded-xl p-2.5 text-center">
             No badges unlocked yet. Log your first meal, water glass, or weigh-in to earn your first badge.
           </p>
@@ -1597,7 +1597,7 @@ export const MeTab: React.FC<MeTabProps> = ({
         <div className="grid grid-cols-2 gap-2">
           {BADGE_DEFINITIONS.map((badge) => {
             const prog = getBadgeProgress(badge.id);
-            const isUnlocked = stats.badges.includes(badge.id) || prog.current >= prog.target;
+            const isUnlocked = (stats?.badges || []).includes(badge.id) || prog.current >= prog.target;
             const pct = Math.min(100, Math.round((prog.current / prog.target) * 100));
             return (
               <div
@@ -1847,7 +1847,7 @@ export const MeTab: React.FC<MeTabProps> = ({
           <div className="space-y-2 pt-2 border-t border-zinc-800">
             <div className="flex items-center justify-between">
               <span className="text-xs font-semibold text-zinc-300">Signed-In Devices</span>
-              {sessionsList.length > 1 && (
+              {(sessionsList || []).length > 1 && (
                 <button
                   type="button"
                   onClick={async () => {
@@ -1862,7 +1862,7 @@ export const MeTab: React.FC<MeTabProps> = ({
               )}
             </div>
             <div className="space-y-1.5">
-              {sessionsList.map((sess) => (
+              {(sessionsList || []).map((sess) => (
                 <div
                   key={sess.id}
                   className="p-2.5 bg-zinc-950 border border-zinc-800 rounded-xl flex items-center justify-between gap-2 text-xs"

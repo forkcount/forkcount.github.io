@@ -571,22 +571,38 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, []);
 
+  // Online / offline network listeners
+  useEffect(() => {
+    const handleOnline = () => {
+      setIsOnline(true);
+      setOfflineWarning(null);
+    };
+    const handleOffline = () => {
+      setIsOnline(false);
+      setOfflineWarning('You are offline. Changes will save locally.');
+    };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      handleOffline();
+    }
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
   // Initialize session
   useEffect(() => {
     let unregisterSync: (() => void) | undefined;
-
-    // Fallback: If init takes longer than 5 seconds, force loading to false and show offline warning
-    const fallbackTimer = setTimeout(() => {
-      setIsLoading(false);
-      setIsGuest(true);
-      setOfflineWarning('Could not reach server. Running in offline mode.');
-    }, 5000);
 
     async function init() {
       setIsLoading(true);
       try {
         const session = await api.initSession();
-        clearTimeout(fallbackTimer);
         setUserId(session.userId);
         setUserEmail(session.username || session.email);
         setIsGuest(session.isGuest);
@@ -605,11 +621,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         });
       } catch (err) {
         console.error('Failed to init session:', err);
-        clearTimeout(fallbackTimer);
         setIsGuest(true);
-        setOfflineWarning('Could not reach server. Running in offline mode.');
       } finally {
-        clearTimeout(fallbackTimer);
         setIsLoading(false);
       }
     }
@@ -617,7 +630,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     init();
 
     return () => {
-      clearTimeout(fallbackTimer);
       if (unregisterSync) unregisterSync();
     };
   }, []);
