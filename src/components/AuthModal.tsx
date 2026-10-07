@@ -91,7 +91,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onAuthComplete }) => {
         setMode(authModalMode);
       }
       // If user is already logged in but has an incomplete profile, open directly to step1
-      if (userId && !userId.startsWith('guest_') && !hasCompleteProfileStats(profile)) {
+      if (userId && !userId.startsWith('guest_') && !profile?.isDev && !hasCompleteProfileStats(profile)) {
         setFlowStage('step1_basic');
       } else {
         setFlowStage('credentials');
@@ -192,7 +192,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onAuthComplete }) => {
         await api.login(cleanUsername, password, rememberMe);
         await onAuthSuccess();
         const freshProfile = await api.getProfile();
-        if (hasCompleteProfileStats(freshProfile.profile)) {
+        if (freshProfile.profile?.isDev || hasCompleteProfileStats(freshProfile.profile)) {
           closeAuthModal();
           if (onAuthComplete) onAuthComplete();
         } else {

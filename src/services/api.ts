@@ -583,6 +583,8 @@ class ApiService {
         if (foundUser.passwordHash && foundUser.passwordHash !== pwHash) {
           throw new Error('Invalid password. Please try again.');
         }
+        this.localCache.users[foundUser.userId] = foundUser;
+        saveLocalCache(this.localCache);
         this.setToken(foundUser.userId, false, rememberMe);
         localStorage.setItem(USER_EMAIL_KEY, foundUser.username || cleanUsername);
         localStorage.setItem('forkcount_last_signed_in_at', new Date().toISOString());

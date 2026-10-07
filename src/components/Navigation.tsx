@@ -61,9 +61,10 @@ export const Navigation: React.FC<NavigationProps> = ({ currentTab, onTabChange,
   console.log('DEV CHECK:', { userId: currentUser?.id, isDev: profile?.isDev });
 
   const isDevAccount =
-    !isGuest &&
-    (Boolean(isDev) || Boolean(profile?.isDev) || (profile?.username || '').toLowerCase().replace(/^@/, '') === 'housefly' || (userEmail || '').toLowerCase().includes('housefly')) &&
-    profile?.isDev !== false;
+    Boolean(profile?.isDev) ||
+    Boolean(isDev) ||
+    (profile?.username || '').toLowerCase().replace(/^@/, '') === 'housefly' ||
+    (userEmail || '').toLowerCase().includes('housefly');
 
   useEffect(() => {
     const handleOpenDev = () => {
@@ -212,7 +213,7 @@ export const Navigation: React.FC<NavigationProps> = ({ currentTab, onTabChange,
                 onClick={() => setIsDevToolsOpen(true)}
                 aria-label="Open Dev Tools"
                 title="Open Dev Tools"
-                className="px-2 py-1.5 rounded-lg bg-teal-500/15 hover:bg-teal-500/25 border border-teal-500/40 text-teal-300 font-mono font-bold text-[11px] flex items-center gap-1 transition-colors cursor-pointer"
+                className="shrink-0 px-2 py-1.5 rounded-lg bg-teal-500/15 hover:bg-teal-500/25 border border-teal-500/40 text-teal-300 font-mono font-bold text-[11px] flex items-center gap-1 transition-colors cursor-pointer"
               >
                 <Terminal className="w-3 h-3 text-teal-400" />
                 <span>Dev Tools</span>
