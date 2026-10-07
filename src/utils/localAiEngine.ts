@@ -652,7 +652,7 @@ const LOCAL_FOOD_DB: LocalFoodEntry[] = [
   },
   {
     name: 'Cheese',
-    keywords: ['cheddar', 'cheese', 'cheddar cheese', 'sliced cheese', 'slice of cheese'],
+    keywords: ['cheddar', 'cheese', 'cheddar cheese', 'cheder', 'sliced cheese', 'slice of cheese'],
     caloriesPer100g: 403,
     proteinPer100g: 24.9,
     carbsPer100g: 1.3,
@@ -662,6 +662,20 @@ const LOCAL_FOOD_DB: LocalFoodEntry[] = [
     sodiumMgPer100g: 621,
     defaultGrams: 20,
     defaultUnitLabel: '1 slice (20g)',
+    category: 'dairy'
+  },
+  {
+    name: 'Parmesan',
+    keywords: ['parmesan', 'parmigiano', 'parmigiano reggiano', 'grated parmesan'],
+    caloriesPer100g: 431,
+    proteinPer100g: 38.0,
+    carbsPer100g: 4.1,
+    fatPer100g: 29.0,
+    fiberPer100g: 0,
+    sugarPer100g: 0.9,
+    sodiumMgPer100g: 1529,
+    defaultGrams: 25,
+    defaultUnitLabel: '25g',
     category: 'dairy'
   },
   {
@@ -810,7 +824,7 @@ const LOCAL_FOOD_DB: LocalFoodEntry[] = [
   // Proteins (Eggs, Poultry, Meat, Fish, Plant)
   {
     name: 'Egg',
-    keywords: ['egg', 'eggs', 'boiled egg', 'scrambled egg', 'scrambled eggs', 'poached egg', 'fried egg', 'omelette', 'omelet'],
+    keywords: ['egg', 'eggs', 'egs', 'eg', 'boiled egg', 'scrambled egg', 'scrambled eggs', 'poached egg', 'fried egg', 'omelette', 'omelet'],
     caloriesPer100g: 143,
     proteinPer100g: 12.6,
     carbsPer100g: 0.7,
@@ -904,6 +918,20 @@ const LOCAL_FOOD_DB: LocalFoodEntry[] = [
     sodiumMgPer100g: 220,
     defaultGrams: 140,
     defaultUnitLabel: '140g',
+    category: 'protein'
+  },
+  {
+    name: 'Pancetta',
+    keywords: ['pancetta', 'guanciale', 'prosciutto', 'cured pork'],
+    caloriesPer100g: 450,
+    proteinPer100g: 28.0,
+    carbsPer100g: 0.5,
+    fatPer100g: 38.0,
+    fiberPer100g: 0,
+    sugarPer100g: 0,
+    sodiumMgPer100g: 1400,
+    defaultGrams: 50,
+    defaultUnitLabel: '50g',
     category: 'protein'
   },
   {
@@ -1050,7 +1078,7 @@ const LOCAL_FOOD_DB: LocalFoodEntry[] = [
   },
   {
     name: 'Bread',
-    keywords: ['sourdough', 'bread', 'toast', 'whole wheat bread', 'slice of bread', 'rye bread', 'bagel', 'wrap', 'tortilla'],
+    keywords: ['sourdough', 'bread', 'toast', 'tost', 'whole wheat bread', 'slice of bread', 'rye bread', 'bagel', 'wrap', 'tortilla'],
     caloriesPer100g: 250,
     proteinPer100g: 10.0,
     carbsPer100g: 46.0,
@@ -1499,14 +1527,49 @@ const KNOWN_ITEM_WEIGHTS_GRAMS: Array<{ pattern: RegExp; grams: number; unitLabe
   { pattern: /\b(blackberry|blackberries)\b/i, grams: 5, unitLabel: 'blackberry' },
   { pattern: /\b(grape|grapes)\b/i, grams: 5, unitLabel: 'grape' },
   { pattern: /\b(cherry|cherries)\b/i, grams: 8, unitLabel: 'cherry' },
-  { pattern: /\b(egg|eggs)\b/i, grams: 60, unitLabel: 'egg' },
+  { pattern: /\b(egg|eggs|egs|eg)\b/i, grams: 60, unitLabel: 'egg' },
   { pattern: /\b(banana|bananas|bannana)\b/i, grams: 120, unitLabel: 'banana' },
   { pattern: /\b(apple|apples)\b/i, grams: 180, unitLabel: 'apple' },
   { pattern: /\b(orange|oranges|mandarin|clementine)\b/i, grams: 150, unitLabel: 'orange' },
   { pattern: /\b(potato|potatoes|sweet potato|sweet potatoes)\b/i, grams: 170, unitLabel: 'potato' },
-  { pattern: /\b(slice of bread|slices of bread|bread|toast|sourdough|whole wheat bread|rye bread)\b/i, grams: 30, unitLabel: 'slice of bread' },
-  { pattern: /\b(slice of cheese|slices of cheese|cheese slice|cheddar|cheese)\b/i, grams: 20, unitLabel: 'slice of cheese' }
+  { pattern: /\b(slice of bread|slices of bread|bread|toast|tost|sourdough|whole wheat bread|rye bread)\b/i, grams: 35, unitLabel: 'slice of bread' },
+  { pattern: /\b(slice of cheese|slices of cheese|cheese slice|cheddar|cheese|cheder)\b/i, grams: 20, unitLabel: 'slice of cheese' },
+  { pattern: /\b(tofu|tempeh)\b/i, grams: 100, unitLabel: '100g' }
 ];
+
+const COMMON_TYPOS: Record<string, string> = {
+  egs: 'eggs',
+  eg: 'egg',
+  tost: 'toast',
+  yougurt: 'yogurt',
+  yoghurt: 'yogurt',
+  yogart: 'yogurt',
+  chiken: 'chicken',
+  chikn: 'chicken',
+  avocadoo: 'avocado',
+  avocdo: 'avocado',
+  bannana: 'banana',
+  bananna: 'banana',
+  aple: 'apple',
+  potatos: 'potatoes',
+  tomatos: 'tomatoes',
+  chesse: 'cheese',
+  chese: 'cheese',
+  cheder: 'cheddar',
+  spagetti: 'spaghetti',
+  spageti: 'spaghetti',
+  peper: 'pepper',
+  milke: 'milk'
+};
+
+export function normalizeFoodTypos(text: string): string {
+  let normalized = text;
+  for (const [typo, replacement] of Object.entries(COMMON_TYPOS)) {
+    const reg = new RegExp(`\\b${typo}\\b`, 'gi');
+    normalized = normalized.replace(reg, replacement);
+  }
+  return normalized;
+}
 
 function getKnownPerItemWeight(foodPhrase: string, unit: string): number | null {
   const combined = `${unit} ${foodPhrase}`.trim();
@@ -2423,7 +2486,35 @@ export function decipherFoodText(
   dailyCalorieGoal?: number,
   mealType: MealContextType = 'breakfast'
 ): DecipheredFoodResult {
-  const parts = rawInput
+  const normalizedInput = normalizeFoodTypos(rawInput.trim());
+
+  // Check for recipe format like "Carbonara for 4 people: 400g spaghetti, 200g pancetta, 4 eggs..."
+  // or "Carbonara: 400g spaghetti, ..."
+  // or "Pasta (serves 4): 400g spaghetti..."
+  const recipeColonMatch = normalizedInput.match(
+    /^([^:\n]+?)(?:\s+(?:for|serves|makes|yields)\s*(\d+)\s*(?:people|servings|portions|cups)?)?\s*:\s*(.+)$/is
+  );
+
+  let recipeTitle: string | undefined;
+  let detectedRecipeServings: number | undefined;
+  let ingredientsString = normalizedInput;
+
+  if (recipeColonMatch) {
+    recipeTitle = recipeColonMatch[1].trim();
+    if (recipeColonMatch[2]) {
+      detectedRecipeServings = parseInt(recipeColonMatch[2], 10);
+    }
+    ingredientsString = recipeColonMatch[3].trim();
+  }
+
+  // Also check if text has "for 4 people" anywhere
+  const servesMatch = normalizedInput.match(/\b(?:for|serves|makes|yields)\s*(\d+)\s*(?:people|servings|portions|cups)?\b/i) || 
+                      normalizedInput.match(/\b(\d+)\s*(?:servings|people|portions|serves)\b/i);
+  if (!detectedRecipeServings && servesMatch) {
+    detectedRecipeServings = parseInt(servesMatch[1], 10);
+  }
+
+  const parts = ingredientsString
     .split(/(?:[,;\n+]+|\b(?:and|with|plus|topped with|alongside)\b)/i)
     .map(s => s.trim())
     .filter(Boolean);
@@ -2436,18 +2527,20 @@ export function decipherFoodText(
 
   const result = buildDecipheredFoodSummary(items, dailyCalorieGoal, mealType);
 
-  // Recipe detection: "for 4 people", "serves 4", "makes 4 servings", "4 servings"
-  const servesMatch = rawInput.match(/\b(?:for|serves|makes|yields)\s*(\d+)\s*(?:people|servings|portions|cups)?\b/i) || 
-                      rawInput.match(/\b(\d+)\s*(?:servings|people|portions|serves)\b/i);
-  const recipeServings = servesMatch ? parseInt(servesMatch[1], 10) : undefined;
-  
-  const isRecipe = Boolean(recipeServings) || 
-                   /\b(?:recipe|dish|carbonara|for\s+\d+|serves\s+\d+|makes\s+\d+)\b/i.test(rawInput) ||
-                   (items.length >= 3 && rawInput.toLowerCase().includes('people'));
+  const isRecipe = Boolean(recipeColonMatch) || 
+                   Boolean(detectedRecipeServings) || 
+                   /\b(?:recipe|carbonara|for\s+\d+|serves\s+\d+|makes\s+\d+)\b/i.test(normalizedInput) ||
+                   (items.length >= 3 && normalizedInput.toLowerCase().includes('people'));
 
   result.isRecipe = isRecipe;
   if (isRecipe) {
-    result.recipeServings = recipeServings || 4; // default 4 servings
+    result.recipeServings = detectedRecipeServings || 4; // default 4 servings
+    if (recipeTitle) {
+      result.mealSummaryName = recipeTitle
+        .split(' ')
+        .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+        .join(' ');
+    }
   }
 
   return result;

@@ -170,7 +170,8 @@ import {
   generateWeeklyInsightsWithGemini,
   rateExerciseWithGemini,
   recommendDailyWorkoutWithGemini,
-  generateCoachSuggestionWithGemini
+  generateCoachSuggestionWithGemini,
+  scanMenuWithGemini
 } from './src/server/aiFeatures.js';
 
 dotenv.config({ path: ['.env.local', '.env'], quiet: true });
@@ -2420,6 +2421,20 @@ app.post('/api/ai/fridge-photo', authenticateUser, async (req, res) => {
 app.post('/api/ai/receipt-scan', authenticateUser, async (req, res) => {
   try {
     const result = await scanReceiptWithGemini(req.body.image, req.body.mimeType);
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/ai/scan-menu', async (req, res) => {
+  try {
+    const images = Array.isArray(req.body.images)
+      ? req.body.images
+      : req.body.image
+        ? [{ base64Image: req.body.image, mimeType: req.body.mimeType }]
+        : [];
+    const result = await scanMenuWithGemini(images, req.body.userGoal, req.body.remainingMacros);
     res.json(result);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
