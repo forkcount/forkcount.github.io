@@ -78,6 +78,8 @@ export interface DecipheredFoodResult {
   healthLabel: string;
   whatToAdd: string[];
   whatToTakeOut: string[];
+  isRecipe?: boolean;
+  recipeServings?: number;
 }
 
 interface ExercisePattern {
@@ -378,6 +380,35 @@ interface LocalFoodEntry {
 }
 
 const LOCAL_FOOD_DB: LocalFoodEntry[] = [
+  // Packaged Foods
+  {
+    name: 'Doritos',
+    keywords: ['doritos', 'dorito', 'nacho cheese doritos', 'tortilla chips'],
+    caloriesPer100g: 488,
+    proteinPer100g: 7.0,
+    carbsPer100g: 58.0,
+    fatPer100g: 26.0,
+    fiberPer100g: 3.5,
+    sugarPer100g: 2.3,
+    sodiumMgPer100g: 710,
+    defaultGrams: 45,
+    defaultUnitLabel: '1 pack (45g)',
+    category: 'processed'
+  },
+  {
+    name: 'Coke Zero',
+    keywords: ['coke zero', 'diet coke', 'coca cola zero', 'coca-cola zero'],
+    caloriesPer100g: 0,
+    proteinPer100g: 0,
+    carbsPer100g: 0,
+    fatPer100g: 0,
+    fiberPer100g: 0,
+    sugarPer100g: 0,
+    sodiumMgPer100g: 5,
+    defaultGrams: 330,
+    defaultUnitLabel: '1 can (330ml)',
+    category: 'beverage'
+  },
   // Fruits
   {
     name: 'Mango',
@@ -2403,5 +2434,21 @@ export function decipherFoodText(
     if (parsed) items.push(parsed);
   }
 
-  return buildDecipheredFoodSummary(items, dailyCalorieGoal, mealType);
+  const result = buildDecipheredFoodSummary(items, dailyCalorieGoal, mealType);
+
+  // Recipe detection: "for 4 people", "serves 4", "makes 4 servings", "4 servings"
+  const servesMatch = rawInput.match(/\b(?:for|serves|makes|yields)\s*(\d+)\s*(?:people|servings|portions|cups)?\b/i) || 
+                      rawInput.match(/\b(\d+)\s*(?:servings|people|portions|serves)\b/i);
+  const recipeServings = servesMatch ? parseInt(servesMatch[1], 10) : undefined;
+  
+  const isRecipe = Boolean(recipeServings) || 
+                   /\b(?:recipe|dish|carbonara|for\s+\d+|serves\s+\d+|makes\s+\d+)\b/i.test(rawInput) ||
+                   (items.length >= 3 && rawInput.toLowerCase().includes('people'));
+
+  result.isRecipe = isRecipe;
+  if (isRecipe) {
+    result.recipeServings = recipeServings || 4; // default 4 servings
+  }
+
+  return result;
 }

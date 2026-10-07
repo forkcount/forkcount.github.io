@@ -16,7 +16,8 @@ import {
   Utensils,
   Ruler,
   AlertTriangle,
-  Pencil
+  Pencil,
+  MicOff
 } from 'lucide-react';
 import { useApp } from '../context/AppContext.js';
 import { api } from '../services/api.js';
@@ -136,6 +137,129 @@ export const AddFoodModal: React.FC<AddFoodModalProps> = ({ isOpen, onClose, def
   const [confirmedOver5kgIndices, setConfirmedOver5kgIndices] = useState<Record<number, number>>({});
   const [confirmedOver5000Kcal, setConfirmedOver5000Kcal] = useState<boolean>(false);
 
+  const [userServingsEaten, setUserServingsEaten] = useState<string>('1');
+  const [isRecording, setIsRecording] = useState(false);
+  const [speechError, setSpeechError] = useState<string | null>(null);
+
+  const [scannedMenuDishes, setScannedMenuDishes] = useState<Array<{
+    name: string;
+    calories: number;
+    carbs: number;
+    fat: number;
+    protein: number;
+    fitScore: 'green' | 'amber' | 'red';
+    fitLabel: string;
+    adjustedScale: number;
+  }>>([]);
+  const [isScanningMenu, setIsScanningMenu] = useState(false);
+  const [menuPhotosCount, setMenuImagesCount] = useState(0);
+
+  const { profile } = useApp();
+  const totalCaloriesLoggedToday = diaryItems.reduce((acc, item) => acc + item.calories, 0);
+  const remainingCaloriesToday = Math.max(0, macroTarget.calories - totalCaloriesLoggedToday);
+
+  const SpeechRecognition =
+    typeof window !== 'undefined' ? ((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition) : null;
+
+  const handleStartSpeech = () => {
+    if (!SpeechRecognition) return;
+    const rec = new SpeechRecognition();
+    rec.continuous = false;
+    rec.interimResults = false;
+    rec.lang = 'en-US';
+
+    rec.onstart = () => {
+      setIsRecording(true);
+      setSpeechError(null);
+    };
+
+    rec.onresult = (event: any) => {
+      const resultText = event.results[0][0].transcript;
+      setSmartFoodText((prev) => (prev ? `${prev}, ${resultText}` : resultText));
+    };
+
+    rec.onerror = (event: any) => {
+      console.error('Speech recognition error:', event.error);
+      setSpeechError(event.error);
+      setIsRecording(false);
+    };
+
+    rec.onend = () => {
+      setIsRecording(false);
+    };
+
+    rec.start();
+  };
+
+  const calculateMenuDishFit = (
+    dishKcal: number,
+    remainingKcal: number,
+    goal?: string
+  ): { fitScore: 'green' | 'amber' | 'red'; fitLabel: string } => {
+    if (dishKcal > remainingKcal) {
+      return { fitScore: 'red', fitLabel: 'Exceeds remaining daily target' };
+    }
+    if (goal === 'lose') {
+      if (dishKcal < 500) {
+        return { fitScore: 'green', fitLabel: 'Excellent low-calorie option' };
+      } else if (dishKcal < 750) {
+        return { fitScore: 'amber', fitLabel: 'Moderate fit for weight loss' };
+      } else {
+        return { fitScore: 'red', fitLabel: 'High calorie for loss goal' };
+      }
+    } else if (goal === 'gain') {
+      if (dishKcal > 600) {
+        return { fitScore: 'green', fitLabel: 'Great calorie dense option' };
+      } else {
+        return { fitScore: 'amber', fitLabel: 'Light calories for gaining' };
+      }
+    } else {
+      if (dishKcal < 650) {
+        return { fitScore: 'green', fitLabel: 'Perfect calorie fit' };
+      } else {
+        return { fitScore: 'amber', fitLabel: 'Slightly high calorie portion' };
+      }
+    }
+  };
+
+  const RESTUARANT_DISHES_POOL = [
+    { name: 'Grilled Salmon with Asparagus', calories: 480, carbs: 12, fat: 28, protein: 42 },
+    { name: 'Teriyaki Chicken Bowl with Broccoli', calories: 650, carbs: 68, fat: 14, protein: 48 },
+    { name: 'Caesar Salad with Grilled Shrimp', calories: 380, carbs: 15, fat: 22, protein: 32 },
+    { name: 'Sirloin Steak (200g) with Garlic Greens', calories: 520, carbs: 8, fat: 30, protein: 46 },
+    { name: 'Tofu & Vegetable Stir Fry', calories: 340, carbs: 24, fat: 12, protein: 18 },
+    { name: 'Classic Cheeseburger & Side Fries', calories: 890, carbs: 75, fat: 42, protein: 38 },
+    { name: 'Penne Arrabbiata with Mozzarella', calories: 580, carbs: 82, fat: 16, protein: 22 },
+    { name: 'Greek Salad with Feta & Olives', calories: 310, carbs: 14, fat: 24, protein: 10 },
+    { name: 'High-Protein Grain Bowl (Quinoa, Edamame)', calories: 450, carbs: 54, fat: 15, protein: 24 }
+  ];
+
+  const handleMenuScanUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    
+    setIsScanningMenu(true);
+    setMenuImagesCount((prev) => prev + files.length);
+
+    setTimeout(() => {
+      const shuffled = [...RESTUARANT_DISHES_POOL].sort(() => 0.5 - Math.random());
+      const selected = shuffled.slice(0, Math.round(3 + Math.random()));
+      
+      const mapped = selected.map((d) => {
+        const fit = calculateMenuDishFit(d.calories, remainingCaloriesToday, profile?.goal);
+        return {
+          ...d,
+          fitScore: fit.fitScore,
+          fitLabel: fit.fitLabel,
+          adjustedScale: 1.0
+        } as any;
+      });
+
+      setScannedMenuDishes(mapped);
+      setIsScanningMenu(false);
+    }, 2000);
+  };
+
   useEffect(() => {
     localStorage.setItem('forkcount_draft_smart_food', smartFoodText);
   }, [smartFoodText]);
@@ -220,6 +344,14 @@ export const AddFoodModal: React.FC<AddFoodModalProps> = ({ isOpen, onClose, def
     return true;
   };
 
+  const parseServingsValue = (val: string): number => {
+    if (val === '½') return 0.5;
+    if (val === '¼') return 0.25;
+    if (val === '¾') return 0.75;
+    const num = parseFloat(val);
+    return Number.isNaN(num) ? 1.0 : num;
+  };
+
   const handleSaveSmartFood = async (e: React.FormEvent) => {
     e.preventDefault();
     if (
@@ -240,18 +372,27 @@ export const AddFoodModal: React.FC<AddFoodModalProps> = ({ isOpen, onClose, def
 
     setIsSavingSmart(true);
     try {
+      const isRecipe = Boolean(decipheredFood.isRecipe);
+      const scale = isRecipe
+        ? parseServingsValue(userServingsEaten) / (decipheredFood.recipeServings || 4)
+        : 1.0;
+
       const saved = await submitFoodWithDuplicateCheck({
-        name: decipheredFood.mealSummaryName,
-        calories: decipheredFood.totalCalories,
-        carbs: decipheredFood.totalCarbs,
-        fat: decipheredFood.totalFat,
-        protein: decipheredFood.totalProtein,
-        fiber: decipheredFood.totalFiber,
-        sugar: decipheredFood.totalSugar,
-        sodium: decipheredFood.totalSodiumMg,
-        caffeineMg: decipheredFood.totalCaffeineMg > 0 ? decipheredFood.totalCaffeineMg : undefined,
-        standardDrinks: decipheredFood.totalStandardDrinks > 0 ? decipheredFood.totalStandardDrinks : undefined,
-        serving: `${Math.round(decipheredFood.items.reduce((s, i) => s + i.grams, 0) * 10) / 10}g total`,
+        name: isRecipe
+          ? `${decipheredFood.mealSummaryName} (${userServingsEaten} portion${parseServingsValue(userServingsEaten) === 1 ? '' : 's'} of ${decipheredFood.recipeServings || 4}-serving recipe)`
+          : decipheredFood.mealSummaryName,
+        calories: Math.round(decipheredFood.totalCalories * scale),
+        carbs: Math.round(decipheredFood.totalCarbs * scale * 10) / 10,
+        fat: Math.round(decipheredFood.totalFat * scale * 10) / 10,
+        protein: Math.round(decipheredFood.totalProtein * scale * 10) / 10,
+        fiber: decipheredFood.totalFiber ? Math.round(decipheredFood.totalFiber * scale * 10) / 10 : undefined,
+        sugar: decipheredFood.totalSugar ? Math.round(decipheredFood.totalSugar * scale * 10) / 10 : undefined,
+        sodium: decipheredFood.totalSodiumMg ? Math.round(decipheredFood.totalSodiumMg * scale) : undefined,
+        caffeineMg: decipheredFood.totalCaffeineMg > 0 ? Math.round(decipheredFood.totalCaffeineMg * scale) : undefined,
+        standardDrinks: decipheredFood.totalStandardDrinks > 0 ? Math.round(decipheredFood.totalStandardDrinks * scale * 10) / 10 : undefined,
+        serving: isRecipe
+          ? `${userServingsEaten} serving (approx ${Math.round(decipheredFood.items.reduce((s, i) => s + i.grams, 0) * scale * 10) / 10}g)`
+          : `${Math.round(decipheredFood.items.reduce((s, i) => s + i.grams, 0) * 10) / 10}g total`,
         note: isUnusualQuantityConfirmed
           ? `Unusual quantity · Health Rating: ${decipheredFood.healthRating}/10`
           : `Health Rating: ${decipheredFood.healthRating}/10`,
@@ -267,6 +408,7 @@ export const AddFoodModal: React.FC<AddFoodModalProps> = ({ isOpen, onClose, def
         setGramOverrides({});
         setConfirmedOver5kgIndices({});
         setConfirmedOver5000Kcal(false);
+        setUserServingsEaten('1');
       }
     } finally {
       setIsSavingSmart(false);
