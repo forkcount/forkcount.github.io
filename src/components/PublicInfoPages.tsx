@@ -11,145 +11,7 @@ interface PageNavProps {
   onOpenCookies?: () => void;
   onOpenContact?: () => void;
   onOpenFaq?: () => void;
-  onOpenPress?: () => void;
 }
-
-// ============================================================================
-// #39 /cookies Page — Explaining what cookies and local storage are used & why
-// ============================================================================
-export const CookiesPage: React.FC<PageNavProps> = ({
-  onBack,
-  onOpenPrivacy,
-  onOpenTerms,
-  onOpenCookies,
-  onOpenContact,
-  onOpenFaq,
-  onOpenPress
-}) => {
-  const [ccpaOptOut, setCcpaOptOut] = useState<boolean>(() => {
-    return typeof window !== 'undefined' && (localStorage.getItem('forkcount_ccpa_do_not_sell') === 'true' || localStorage.getItem('caloriq_ccpa_do_not_sell') === 'true');
-  });
-
-  useEffect(() => {
-    document.title = 'Cookies & Local Storage — ForkCount';
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  }, []);
-
-  const handleToggleCcpa = () => {
-    const next = !ccpaOptOut;
-    setCcpaOptOut(next);
-    localStorage.setItem('forkcount_ccpa_do_not_sell', String(next));
-    if (next) {
-      localStorage.setItem('forkcount_cookie_consent', 'declined');
-      api.logCookieConsent('declined').catch(() => {});
-    }
-  };
-
-  return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-100 font-sans">
-      <a href="#main-cookies" className="skip-to-content">
-        Skip to main content
-      </a>
-      <div className="mx-auto max-w-3xl px-5 py-10 sm:px-8 sm:py-14">
-        <div className="mb-8 flex items-center justify-between border-b border-zinc-800 pb-5">
-          <button
-            type="button"
-            onClick={onBack}
-            aria-label="Back to app"
-            className="inline-flex min-h-[44px] items-center gap-2 rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-2 text-xs font-medium text-zinc-200 hover:border-teal-500/40 hover:text-teal-300"
-          >
-            <ArrowLeft className="w-4 h-4 text-teal-400" />
-            <span>Back</span>
-          </button>
-          <span className="text-sm font-semibold text-zinc-100">ForkCount</span>
-        </div>
-
-        <main id="main-cookies" className="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-6 sm:p-10 space-y-8">
-          <header className="border-b border-zinc-800 pb-5 space-y-2">
-            <h1 className="text-2xl sm:text-3xl font-bold text-zinc-100">
-              Cookies &amp; Local Storage Policy
-            </h1>
-            <p className="text-xs text-zinc-300">
-              ForkCount does not use third-party advertising cookies or cross-site tracking cookies.
-            </p>
-          </header>
-
-          <section className="space-y-3">
-            <h2 className="text-lg font-semibold text-zinc-100">What we store in your browser and why</h2>
-            <p className="text-sm text-zinc-300 leading-relaxed">
-              Instead of tracking cookies, ForkCount uses your browser&apos;s standard <code className="text-teal-300 font-mono text-xs">localStorage</code> and <code className="text-teal-300 font-mono text-xs">sessionStorage</code> so the app works reliably and offline:
-            </p>
-            <div className="overflow-x-auto border border-zinc-800 rounded-xl">
-              <table className="w-full text-left text-xs">
-                <thead className="bg-zinc-950 text-zinc-300 border-b border-zinc-800">
-                  <tr>
-                    <th className="p-3 font-semibold">Key</th>
-                    <th className="p-3 font-semibold">Purpose</th>
-                    <th className="p-3 font-semibold">Category</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-zinc-800 text-zinc-300">
-                  <tr>
-                    <td className="p-3 font-mono text-teal-300">forkcount_session_token</td>
-                    <td className="p-3">Keeps you signed in across page reloads.</td>
-                    <td className="p-3">Strictly Necessary</td>
-                  </tr>
-                  <tr>
-                    <td className="p-3 font-mono text-teal-300">forkcount_standalone_db_*</td>
-                    <td className="p-3">Caches your diary, water, and exercise entries so the app works offline.</td>
-                    <td className="p-3">Strictly Necessary</td>
-                  </tr>
-                  <tr>
-                    <td className="p-3 font-mono text-teal-300">forkcount_locale</td>
-                    <td className="p-3">Remembers your chosen language (English, Español, Français, Deutsch).</td>
-                    <td className="p-3">Functional</td>
-                  </tr>
-                  <tr>
-                    <td className="p-3 font-mono text-teal-300">forkcount_cookie_consent</td>
-                    <td className="p-3">Remembers whether you accepted or declined optional analytics.</td>
-                    <td className="p-3">Compliance</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </section>
-
-          {/* #37 California CCPA Notice */}
-          <section className="p-4 rounded-xl bg-zinc-950 border border-zinc-800 space-y-3">
-            <div className="flex items-center gap-2">
-              <Shield className="w-4 h-4 text-teal-400" />
-              <h2 className="text-sm font-semibold text-zinc-100">
-                California Privacy Rights (CCPA) — Do Not Sell My Personal Information
-              </h2>
-            </div>
-            <p className="text-xs text-zinc-300 leading-relaxed">
-              ForkCount never sells, rents, or trades your personal data or health records to any third party or data broker. You can also record an explicit CCPA opt-out preference below:
-            </p>
-            <button
-              type="button"
-              onClick={handleToggleCcpa}
-              aria-label="Toggle Do Not Sell My Data preference"
-              className="min-h-[44px] px-4 py-2 rounded-xl bg-teal-500/15 hover:bg-teal-500/25 border border-teal-500/40 text-teal-300 text-xs font-semibold transition-colors"
-            >
-              {ccpaOptOut
-                ? 'Do Not Sell My Data: Active (Confirmed)'
-                : 'Do not sell my data — Record preference'}
-            </button>
-          </section>
-        </main>
-
-        <LegalFooter
-          onOpenPrivacy={onOpenPrivacy}
-          onOpenTerms={onOpenTerms}
-          onOpenCookies={onOpenCookies}
-          onOpenContact={onOpenContact}
-          onOpenFaq={onOpenFaq}
-          onOpenPress={onOpenPress}
-        />
-      </div>
-    </div>
-  );
-};
 
 // ============================================================================
 // #45 /faq Page — Answering the 7 required questions
@@ -191,8 +53,7 @@ export const FaqPage: React.FC<PageNavProps> = ({
   onOpenTerms,
   onOpenCookies,
   onOpenContact,
-  onOpenFaq,
-  onOpenPress
+  onOpenFaq
 }) => {
   useEffect(() => {
     document.title = 'Frequently Asked Questions — ForkCount';
@@ -245,10 +106,9 @@ export const FaqPage: React.FC<PageNavProps> = ({
         <LegalFooter
           onOpenPrivacy={onOpenPrivacy}
           onOpenTerms={onOpenTerms}
-          onOpenCookies={onOpenCookies}
+          onOpenCookies={onOpenPrivacy}
           onOpenContact={onOpenContact}
           onOpenFaq={onOpenFaq}
-          onOpenPress={onOpenPress}
         />
       </div>
     </div>
@@ -264,8 +124,7 @@ export const ContactPage: React.FC<PageNavProps> = ({
   onOpenTerms,
   onOpenCookies,
   onOpenContact,
-  onOpenFaq,
-  onOpenPress
+  onOpenFaq
 }) => {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -439,10 +298,9 @@ export const ContactPage: React.FC<PageNavProps> = ({
         <LegalFooter
           onOpenPrivacy={onOpenPrivacy}
           onOpenTerms={onOpenTerms}
-          onOpenCookies={onOpenCookies}
+          onOpenCookies={onOpenPrivacy}
           onOpenContact={onOpenContact}
           onOpenFaq={onOpenFaq}
-          onOpenPress={onOpenPress}
         />
       </div>
     </div>
@@ -467,8 +325,7 @@ export const PressPage: React.FC<PageNavProps> = ({
   onOpenTerms,
   onOpenCookies,
   onOpenContact,
-  onOpenFaq,
-  onOpenPress
+  onOpenFaq
 }) => {
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
@@ -590,17 +447,15 @@ export const PressPage: React.FC<PageNavProps> = ({
         <LegalFooter
           onOpenPrivacy={onOpenPrivacy}
           onOpenTerms={onOpenTerms}
-          onOpenCookies={onOpenCookies}
+          onOpenCookies={onOpenPrivacy}
           onOpenContact={onOpenContact}
           onOpenFaq={onOpenFaq}
-          onOpenPress={onOpenPress}
         />
       </div>
     </div>
   );
 };
 
-export const CookiesPolicyPage = CookiesPage;
 export const PressKitPage = PressPage;
 
 // ============================================================================

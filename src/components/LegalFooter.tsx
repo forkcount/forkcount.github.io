@@ -8,7 +8,6 @@ interface LegalFooterProps {
   onOpenCookies?: () => void;
   onOpenFaq?: () => void;
   onOpenContact?: () => void;
-  onOpenPress?: () => void;
 }
 
 export const LegalFooter: React.FC<LegalFooterProps> = ({
@@ -16,8 +15,7 @@ export const LegalFooter: React.FC<LegalFooterProps> = ({
   onOpenTerms,
   onOpenCookies,
   onOpenFaq,
-  onOpenContact,
-  onOpenPress
+  onOpenContact
 }) => {
   const handleNav = (e: React.MouseEvent<HTMLAnchorElement>, path: string, cb?: () => void) => {
     if (cb) {

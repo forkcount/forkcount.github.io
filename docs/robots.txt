@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+Allow: /googleb7257b87a44b3751.html
+Sitemap: https://forkcount.github.io/sitemap.xml

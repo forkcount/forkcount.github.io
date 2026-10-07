@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { ArrowLeft, Shield } from 'lucide-react';
 import { LegalFooter } from './LegalFooter.js';
+import { api } from '../services/api.js';
 
 interface PrivacyPolicyPageProps {
   onBackToLanding: () => void;
@@ -11,6 +12,24 @@ export const PrivacyPolicyPage: React.FC<PrivacyPolicyPageProps> = ({
   onBackToLanding,
   onOpenTerms
 }) => {
+  const [ccpaOptOut, setCcpaOptOut] = useState<boolean>(() => {
+    return (
+      typeof window !== 'undefined' &&
+      (localStorage.getItem('forkcount_ccpa_do_not_sell') === 'true' ||
+        localStorage.getItem('caloriq_ccpa_do_not_sell') === 'true')
+    );
+  });
+
+  const handleToggleCcpa = () => {
+    const next = !ccpaOptOut;
+    setCcpaOptOut(next);
+    localStorage.setItem('forkcount_ccpa_do_not_sell', String(next));
+    if (next) {
+      localStorage.setItem('forkcount_cookie_consent', 'declined');
+      api.logCookieConsent('declined').catch(() => {});
+    }
+  };
+
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 font-sans selection:bg-teal-500/20 selection:text-teal-300">
       <a href="#main-content" className="skip-to-content">
@@ -39,12 +58,12 @@ export const PrivacyPolicyPage: React.FC<PrivacyPolicyPageProps> = ({
         <div className="space-y-2 border-b border-zinc-800 pb-6">
           <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-teal-500/10 border border-teal-500/20 text-teal-300 text-[11px] font-medium">
             <Shield className="w-3.5 h-3.5" aria-hidden="true" />
-            <span>Legal &amp; Data Protection (GDPR / CCPA)</span>
+            <span>Legal, Privacy &amp; Cookie Storage Policy (GDPR / CCPA)</span>
           </div>
           <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-zinc-100">
-            Privacy Policy
+            Privacy &amp; Cookie Storage Policy
           </h1>
-          <p className="text-xs text-zinc-400 font-mono">Last updated: September 2026</p>
+          <p className="text-xs text-zinc-400 font-mono">Last updated: October 2026</p>
         </div>
 
         <div className="space-y-6 text-sm text-zinc-300 leading-relaxed">
@@ -68,17 +87,66 @@ export const PrivacyPolicyPage: React.FC<PrivacyPolicyPageProps> = ({
             </p>
           </section>
 
-          <section className="space-y-2">
+          <section className="space-y-3">
             <h2 className="text-base font-bold text-zinc-100">3. Cookies &amp; Local Storage Policy</h2>
             <p>
               ForkCount does not use third-party advertising cookies or cross-site tracking cookies. Instead of tracking cookies, ForkCount uses your browser&apos;s standard <code className="text-teal-300 font-mono text-xs">localStorage</code> and <code className="text-teal-300 font-mono text-xs">sessionStorage</code> so the app works reliably and offline:
             </p>
-            <ul className="list-disc pl-5 space-y-1 text-zinc-300">
-              <li><strong>forkcount_session_token</strong>: Keeps you signed in across page reloads (Strictly Necessary).</li>
-              <li><strong>forkcount_standalone_db_*</strong>: Caches your diary, water, and exercise entries so the app works offline (Strictly Necessary).</li>
-              <li><strong>forkcount_locale</strong>: Remembers your chosen language (Functional).</li>
-              <li><strong>forkcount_cookie_consent</strong>: Remembers whether you accepted or declined optional analytics (Compliance).</li>
-            </ul>
+            <div className="overflow-x-auto border border-zinc-800 rounded-xl my-3">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-zinc-900/90 text-zinc-300 border-b border-zinc-800">
+                  <tr>
+                    <th className="p-3 font-semibold">Key</th>
+                    <th className="p-3 font-semibold">Purpose</th>
+                    <th className="p-3 font-semibold">Category</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-zinc-800 text-zinc-300">
+                  <tr>
+                    <td className="p-3 font-mono text-teal-300">forkcount_session_token</td>
+                    <td className="p-3">Keeps you signed in across page reloads.</td>
+                    <td className="p-3">Strictly Necessary</td>
+                  </tr>
+                  <tr>
+                    <td className="p-3 font-mono text-teal-300">forkcount_standalone_db_*</td>
+                    <td className="p-3">Caches your diary, water, and exercise entries so the app works offline.</td>
+                    <td className="p-3">Strictly Necessary</td>
+                  </tr>
+                  <tr>
+                    <td className="p-3 font-mono text-teal-300">forkcount_locale</td>
+                    <td className="p-3">Remembers your chosen language.</td>
+                    <td className="p-3">Functional</td>
+                  </tr>
+                  <tr>
+                    <td className="p-3 font-mono text-teal-300">forkcount_cookie_consent</td>
+                    <td className="p-3">Remembers whether you accepted or declined optional analytics.</td>
+                    <td className="p-3">Compliance</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div className="p-4 rounded-xl bg-zinc-900/60 border border-zinc-800 space-y-2.5">
+              <div className="flex items-center gap-2">
+                <Shield className="w-4 h-4 text-teal-400" />
+                <h3 className="text-xs font-semibold text-zinc-100">
+                  California Privacy Rights (CCPA) — Do Not Sell My Personal Information
+                </h3>
+              </div>
+              <p className="text-xs text-zinc-300 leading-relaxed">
+                ForkCount never sells, rents, or trades your personal data or health records to any third party or data broker. You can record an explicit CCPA opt-out preference below:
+              </p>
+              <button
+                type="button"
+                onClick={handleToggleCcpa}
+                aria-label="Toggle Do Not Sell My Data preference"
+                className="min-h-[38px] px-3.5 py-1.5 rounded-lg bg-teal-500/15 hover:bg-teal-500/25 border border-teal-500/40 text-teal-300 text-xs font-semibold transition-colors cursor-pointer"
+              >
+                {ccpaOptOut
+                  ? 'Do Not Sell My Data: Active (Confirmed)'
+                  : 'Do not sell my data — Record preference'}
+              </button>
+            </div>
           </section>
 
           <section className="space-y-2">
@@ -113,7 +181,7 @@ export const PrivacyPolicyPage: React.FC<PrivacyPolicyPageProps> = ({
           <section className="space-y-2">
             <h2 className="text-base font-bold text-zinc-100">7. Age Requirement</h2>
             <p>
-              ForkCount is not intended for children under 13 (#50). Users between 13 and 17 years of age should use ForkCount only with the involvement of a parent or legal guardian. We do not knowingly collect personal data from children under 13.
+              ForkCount is not intended for children under 13. Users between 13 and 17 years of age should use ForkCount only with the involvement of a parent or legal guardian. We do not knowingly collect personal data from children under 13.
             </p>
           </section>
 

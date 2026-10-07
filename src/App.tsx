@@ -12,7 +12,6 @@ import { DesktopScrollbar } from './components/DesktopScrollbar.js';
 import { ErrorBoundary } from './components/ErrorBoundary.js';
 import {
   RouteErrorBoundary,
-  CookiesPolicyPage,
   FaqPage,
   ContactPage,
   PressKitPage,
@@ -54,7 +53,6 @@ interface MainAppContentProps {
   onOpenCookies: () => void;
   onOpenFaq: () => void;
   onOpenContact: () => void;
-  onOpenPress: () => void;
   initialTab?: TabType;
   autoOpenAuth?: boolean;
   onAutoOpenAuthHandled?: () => void;
@@ -67,7 +65,6 @@ const MainAppContent: React.FC<MainAppContentProps> = ({
   onOpenCookies,
   onOpenFaq,
   onOpenContact,
-  onOpenPress,
   initialTab = 'diary',
   autoOpenAuth = false,
   onAutoOpenAuthHandled
@@ -311,7 +308,6 @@ const MainAppContent: React.FC<MainAppContentProps> = ({
           onOpenCookies={onOpenCookies}
           onOpenFaq={onOpenFaq}
           onOpenContact={onOpenContact}
-          onOpenPress={onOpenPress}
         />
       </main>
 
@@ -404,7 +400,6 @@ type ViewType =
   | 'app'
   | 'privacy'
   | 'terms'
-  | 'cookies'
   | 'faq'
   | 'contact'
   | 'press'
@@ -447,12 +442,10 @@ function resolveViewFromLocation(): ViewType {
     const safeTarget = getSafeRedirectUrl(redirectParam, '/dashboard');
     if (window.location.pathname !== safeTarget) {
       window.history.replaceState({}, '', safeTarget);
-      return safeTarget === '/privacy'
+      return safeTarget === '/privacy' || safeTarget === '/cookies'
         ? 'privacy'
         : safeTarget === '/terms'
         ? 'terms'
-        : safeTarget === '/cookies'
-        ? 'cookies'
         : safeTarget === '/faq'
         ? 'faq'
         : safeTarget === '/contact'
@@ -475,8 +468,11 @@ function resolveViewFromLocation(): ViewType {
   }
   if (path === '/app' || path === '/dashboard') return 'app';
   if (path === '/privacy') return 'privacy';
+  if (path === '/cookies') {
+    window.history.replaceState({}, '', '/privacy');
+    return 'privacy';
+  }
   if (path === '/terms') return 'terms';
-  if (path === '/cookies') return 'cookies';
   if (path === '/faq') return 'faq';
   if (path === '/contact') return 'contact';
   if (path === '/press') return 'press';
@@ -683,7 +679,7 @@ export default function App() {
   const handleOpenDescription = () => navigateTo('landing', '/');
   const handleOpenPrivacy = () => navigateTo('privacy', '/privacy');
   const handleOpenTerms = () => navigateTo('terms', '/terms');
-  const handleOpenCookies = () => navigateTo('cookies', '/cookies');
+  const handleOpenCookies = () => navigateTo('privacy', '/privacy');
   const handleOpenFaq = () => navigateTo('faq', '/faq');
   const handleOpenContact = () => navigateTo('contact', '/contact');
   const handleOpenPress = () => navigateTo('press', '/press');
@@ -724,17 +720,6 @@ export default function App() {
           <TermsOfServicePage
             onBackToLanding={handleOpenDescription}
             onOpenPrivacy={handleOpenPrivacy}
-          />
-          <DesktopScrollbar />
-        </Suspense>
-      )}
-
-      {activeView === 'cookies' && (
-        <Suspense fallback={<RouteSkeleton />}>
-          <CookiesPolicyPage
-            onBackToLanding={handleOpenDescription}
-            onOpenPrivacy={handleOpenPrivacy}
-            onOpenTerms={handleOpenTerms}
           />
           <DesktopScrollbar />
         </Suspense>
@@ -807,7 +792,6 @@ export default function App() {
             onOpenCookies={handleOpenCookies}
             onOpenFaq={handleOpenFaq}
             onOpenContact={handleOpenContact}
-            onOpenPress={handleOpenPress}
             initialTab={initialTab}
             autoOpenAuth={autoOpenAuth}
             onAutoOpenAuthHandled={() => setAutoOpenAuth(false)}
@@ -879,10 +863,10 @@ export default function App() {
           <p className="text-xs text-zinc-300 leading-relaxed text-center sm:text-left">
             ForkCount uses local storage to keep you signed in and remember your preferences. No tracking cookies.{' '}
             <a
-              href="/cookies"
+              href="/privacy"
               onClick={(e) => {
                 e.preventDefault();
-                handleOpenCookies();
+                handleOpenPrivacy();
               }}
               className="text-teal-400 hover:text-teal-300 underline underline-offset-4"
             >
