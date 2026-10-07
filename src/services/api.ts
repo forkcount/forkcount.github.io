@@ -2082,15 +2082,73 @@ class ApiService {
   async devSendManualCode(_email: string): Promise<any> {
     return { code: '123456' };
   }
-  async devDeleteUser(emailOrUsername: string, _confirmEmail?: string): Promise<any> {
+  async devDeleteUser(emailOrUsername: string, explicitUserId?: string): Promise<any> {
     const cleanUsername = emailOrUsername.trim().toLowerCase().replace(/^@/, '');
-    const userId = `usr_${cleanUsername.replace(/[^a-z0-9_]/g, '_')}`;
+    const targetUserId = explicitUserId && explicitUserId.trim()
+      ? explicitUserId.trim()
+      : `usr_${cleanUsername.replace(/[^a-z0-9_]/g, '_')}`;
+
     try {
-      await deleteDoc(doc(db, 'users', userId));
+      // 1. Delete user doc & plan
+      await Promise.all([
+        deleteDoc(doc(db, 'users', targetUserId)).catch(() => {}),
+        deleteDoc(doc(db, 'plans', targetUserId)).catch(() => {})
+      ]);
+
+      // 2. Delete user's records across data collections
+      const userCollections = [
+        'diaryEntries',
+        'waterEntries',
+        'exerciseEntries',
+        'weightEntries',
+        'savedFoods',
+        'savedRecipes',
+        'mealTemplates',
+        'pantry',
+        'cravings',
+        'victories',
+        'habits'
+      ];
+
+      for (const colName of userCollections) {
+        try {
+          const q = query(collection(db, colName), where('userId', '==', targetUserId));
+          const snap = await getDocs(q);
+          await Promise.all(snap.docs.map((d) => deleteDoc(d.ref).catch(() => {})));
+        } catch {}
+      }
+
+      // 3. Anonymise community posts authored by this user
+      try {
+        const postsQ = query(collection(db, 'communityPosts'), where('userId', '==', targetUserId));
+        const postsSnap = await getDocs(postsQ);
+        await Promise.all(
+          postsSnap.docs.map((d) =>
+            updateDoc(d.ref, {
+              username: 'Deleted user',
+              authorUsername: 'Deleted user'
+            }).catch(() => {})
+          )
+        );
+      } catch {}
+
+      // 4. Anonymise community replies authored by this user
+      try {
+        const repliesQ = query(collection(db, 'communityReplies'), where('userId', '==', targetUserId));
+        const repliesSnap = await getDocs(repliesQ);
+        await Promise.all(
+          repliesSnap.docs.map((d) =>
+            updateDoc(d.ref, {
+              username: 'Deleted user'
+            }).catch(() => {})
+          )
+        );
+      } catch {}
     } catch (err) {
-      console.error('Error deleting user doc:', err);
+      console.error('Error in devDeleteUser:', err);
     }
-    return { deleted: true, summary: `Deleted user ${cleanUsername}`, deletedEmail: cleanUsername };
+
+    return { deleted: true, summary: `Deleted user @${cleanUsername}`, deletedEmail: cleanUsername, userId: targetUserId };
   }
   async devGetReportedPosts(): Promise<any> {
     try {
