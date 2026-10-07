@@ -2092,7 +2092,11 @@ class ApiService {
       // 1. Delete user doc & plan
       await Promise.all([
         deleteDoc(doc(db, 'users', targetUserId)).catch(() => {}),
-        deleteDoc(doc(db, 'plans', targetUserId)).catch(() => {})
+        deleteDoc(doc(db, 'plans', targetUserId)).catch(() => {}),
+        deleteDoc(doc(db, 'pantry', targetUserId)).catch(() => {}),
+        deleteDoc(doc(db, 'cravings', targetUserId)).catch(() => {}),
+        deleteDoc(doc(db, 'victories', targetUserId)).catch(() => {}),
+        deleteDoc(doc(db, 'habits', targetUserId)).catch(() => {})
       ]);
 
       // 2. Delete user's records across data collections
@@ -2126,7 +2130,22 @@ class ApiService {
           postsSnap.docs.map((d) =>
             updateDoc(d.ref, {
               username: 'Deleted user',
-              authorUsername: 'Deleted user'
+              authorUsername: 'Deleted user',
+              authorName: 'Deleted user'
+            }).catch(() => {})
+          )
+        );
+      } catch {}
+
+      try {
+        const postsAuthorQ = query(collection(db, 'communityPosts'), where('authorId', '==', targetUserId));
+        const postsAuthorSnap = await getDocs(postsAuthorQ);
+        await Promise.all(
+          postsAuthorSnap.docs.map((d) =>
+            updateDoc(d.ref, {
+              username: 'Deleted user',
+              authorUsername: 'Deleted user',
+              authorName: 'Deleted user'
             }).catch(() => {})
           )
         );
@@ -2139,7 +2158,21 @@ class ApiService {
         await Promise.all(
           repliesSnap.docs.map((d) =>
             updateDoc(d.ref, {
-              username: 'Deleted user'
+              username: 'Deleted user',
+              authorUsername: 'Deleted user'
+            }).catch(() => {})
+          )
+        );
+      } catch {}
+
+      try {
+        const repliesAuthorQ = query(collection(db, 'communityReplies'), where('authorId', '==', targetUserId));
+        const repliesAuthorSnap = await getDocs(repliesAuthorQ);
+        await Promise.all(
+          repliesAuthorSnap.docs.map((d) =>
+            updateDoc(d.ref, {
+              username: 'Deleted user',
+              authorUsername: 'Deleted user'
             }).catch(() => {})
           )
         );

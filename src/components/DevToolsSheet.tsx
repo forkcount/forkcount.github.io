@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Terminal,
   X,
@@ -15,7 +15,6 @@ import {
   KeyRound,
   Copy,
   Check,
-  UserX,
   Users
 } from 'lucide-react';
 import { doc, setDoc, getDocs, collection } from 'firebase/firestore';
@@ -48,7 +47,6 @@ export const DevToolsSheet: React.FC<DevToolsSheetProps> = ({
   userEmail
 }) => {
   const { userId } = useApp();
-  const [showDeleteConfirmModal, setShowDeleteConfirmModal] = useState(false);
   const [deleteToast, setDeleteToast] = useState<string | null>(null);
 
   // 1. Seed Demo Account state
@@ -93,17 +91,23 @@ export const DevToolsSheet: React.FC<DevToolsSheetProps> = ({
   const [recentErrors, setRecentErrors] = useState<any[]>([]);
   const [isLoadingErrors, setIsLoadingErrors] = useState(false);
 
-  // 6. Delete User state
-  const [deleteTargetEmail, setDeleteTargetEmail] = useState('');
-  const [deleteConfirmEmail, setDeleteConfirmEmail] = useState('');
-  const [isDeletingUser, setIsDeletingUser] = useState(false);
-  const [deleteUserStatus, setDeleteUserStatus] = useState<string | null>(null);
-
-  // 7. Users List state
+  // 6. Users List state
   const [usersList, setUsersList] = useState<any[]>([]);
   const [userSearchQuery, setUserSearchQuery] = useState('');
   const [userPage, setUserPage] = useState(0);
   const [isLoadingUsers, setIsLoadingUsers] = useState(false);
+
+  // User deletion state for inline buttons in User List
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const deleteTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (deleteTimerRef.current) {
+        clearTimeout(deleteTimerRef.current);
+      }
+    };
+  }, []);
 
   const loadUsersList = useCallback(async () => {
     setIsLoadingUsers(true);
@@ -300,43 +304,67 @@ export const DevToolsSheet: React.FC<DevToolsSheetProps> = ({
     }
   };
 
-  const handleDeleteUserAccount = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!deleteTargetEmail || deleteTargetEmail !== deleteConfirmEmail) return;
-    setShowDeleteConfirmModal(true);
-  };
+  const handleDeleteUserClick = async (userRecord: any) => {
+    const isDev = Boolean(
+      userRecord.isDev ||
+      userRecord.profile?.isDev ||
+      (userRecord.username && userRecord.username.toLowerCase() === 'housefly')
+    );
 
-  const handleConfirmDeleteUserAccount = async () => {
-    setShowDeleteConfirmModal(false);
-    setIsDeletingUser(true);
-    setDeleteUserStatus(null);
-    try {
-      const res = await api.devDeleteUser(deleteTargetEmail, deleteConfirmEmail);
-      setDeleteUserStatus(res.summary || `Deleted user ${res.deletedEmail}.`);
-      setDeleteTargetEmail('');
-      setDeleteConfirmEmail('');
-      setDeleteToast('Account deleted');
+    if (isDev) {
+      setDeleteToast('Cannot delete the dev account.');
       setTimeout(() => setDeleteToast(null), 4000);
+      return;
+    }
 
-      // Log action to the securityEvents collection
-      try {
-        await setDoc(doc(db, 'securityEvents', `sec_${Date.now()}`), {
-          id: `sec_${Date.now()}`,
-          userId: userId || 'admin',
-          username: localStorage.getItem('forkcount_user_email') || 'admin',
-          eventType: 'ADMIN_DELETE_USER',
-          severity: 'HIGH',
-          detail: `Permanently deleted user account @${res.deletedEmail || deleteTargetEmail} and all their data.`,
-          createdAt: Date.now(),
-          ip: '127.0.0.1'
-        });
-      } catch (secErr) {
-        console.error('Failed to log security event:', secErr);
+    if (confirmDeleteId === userRecord.id) {
+      // Second tap within 5 seconds -> delete account immediately
+      if (deleteTimerRef.current) {
+        clearTimeout(deleteTimerRef.current);
+        deleteTimerRef.current = null;
       }
-    } catch (err: any) {
-      setDeleteUserStatus(err?.message || 'Could not delete user.');
-    } finally {
-      setIsDeletingUser(false);
+      setConfirmDeleteId(null);
+
+      try {
+        // Remove row immediately from the UI
+        setUsersList((prev) => prev.filter((u) => u.id !== userRecord.id));
+
+        await api.devDeleteUser(userRecord.username, userRecord.id);
+
+        const displayName = userRecord.username ? `@${userRecord.username}` : 'User';
+        setDeleteToast(`${displayName} deleted`);
+        setTimeout(() => setDeleteToast(null), 4000);
+
+        // Log action to the Security Events collection
+        try {
+          await setDoc(doc(db, 'securityEvents', `sec_${Date.now()}`), {
+            id: `sec_${Date.now()}`,
+            userId: userId || 'admin',
+            username: localStorage.getItem('forkcount_user_email') || 'admin',
+            eventType: 'ADMIN_DELETE_USER',
+            severity: 'HIGH',
+            detail: `Permanently deleted user account @${userRecord.username || userRecord.id} (${userRecord.id}) and all their data.`,
+            createdAt: Date.now(),
+            ip: '127.0.0.1'
+          });
+        } catch (secErr) {
+          console.error('Failed to log security event:', secErr);
+        }
+      } catch (err: any) {
+        setDeleteToast(err?.message || 'Could not delete user.');
+        setTimeout(() => setDeleteToast(null), 4000);
+        loadUsersList();
+      }
+    } else {
+      // First tap -> switch to Confirm? state for 5 seconds
+      if (deleteTimerRef.current) {
+        clearTimeout(deleteTimerRef.current);
+      }
+      setConfirmDeleteId(userRecord.id);
+      deleteTimerRef.current = setTimeout(() => {
+        setConfirmDeleteId((cur) => (cur === userRecord.id ? null : cur));
+        deleteTimerRef.current = null;
+      }, 5000);
     }
   };
 
@@ -681,13 +709,26 @@ export const DevToolsSheet: React.FC<DevToolsSheetProps> = ({
                                   {formatSafeTimestamp(u.updatedAt || u.createdAt)}
                                 </td>
                                 <td className="py-2 px-3 text-right">
-                                  <button
-                                    type="button"
-                                    onClick={() => handleQuickInspect(u.username)}
-                                    className="px-2 py-1 bg-teal-500/10 hover:bg-teal-500 hover:text-zinc-950 border border-teal-500/20 text-teal-400 rounded-lg text-[10px] font-bold transition-all"
-                                  >
-                                    Inspect
-                                  </button>
+                                  <div className="flex items-center justify-end gap-1.5">
+                                    <button
+                                      type="button"
+                                      onClick={() => handleQuickInspect(u.username)}
+                                      className="px-2 py-1 bg-teal-500/10 hover:bg-teal-500 hover:text-zinc-950 border border-teal-500/20 text-teal-400 rounded-lg text-[10px] font-bold transition-all"
+                                    >
+                                      Inspect
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleDeleteUserClick(u)}
+                                      className={`px-2 py-1 rounded-lg text-[10px] font-bold transition-all ${
+                                        confirmDeleteId === u.id
+                                          ? 'bg-rose-500/20 border border-rose-500 text-rose-400 hover:bg-rose-500 hover:text-white'
+                                          : 'bg-zinc-800/40 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-zinc-300'
+                                      }`}
+                                    >
+                                      {confirmDeleteId === u.id ? 'Confirm?' : 'Delete'}
+                                    </button>
+                                  </div>
                                 </td>
                               </tr>
                             ))
@@ -955,84 +996,8 @@ export const DevToolsSheet: React.FC<DevToolsSheetProps> = ({
               </div>
             )}
           </div>
-
-          {/* 6. DELETE USER ACCOUNT */}
-          <div className="bg-zinc-900/90 border border-rose-900/40 rounded-2xl p-4 shadow-xl space-y-3">
-            <div className="flex items-center gap-2">
-              <UserX className="w-4 h-4 text-rose-400" />
-              <div>
-                <h3 className="text-xs font-bold text-zinc-100">Delete User Account</h3>
-                <span className="text-[10px] text-zinc-400 block">
-                  Permanently remove a user account and all associated records
-                </span>
-              </div>
-            </div>
-
-            <form onSubmit={handleDeleteUserAccount} className="space-y-2">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                <input
-                  type="text"
-                  value={deleteTargetEmail}
-                  onChange={(e) => setDeleteTargetEmail(e.target.value)}
-                  placeholder="Target username or email..."
-                  className="bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-rose-500"
-                />
-                <input
-                  type="text"
-                  value={deleteConfirmEmail}
-                  onChange={(e) => setDeleteConfirmEmail(e.target.value)}
-                  placeholder="Re-type to confirm..."
-                  className="bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-rose-500"
-                />
-              </div>
-              <button
-                type="submit"
-                disabled={
-                  isDeletingUser ||
-                  !deleteTargetEmail ||
-                  deleteTargetEmail !== deleteConfirmEmail
-                }
-                className="w-full py-2 bg-rose-600 hover:bg-rose-500 disabled:opacity-40 text-white font-bold rounded-xl text-xs transition-colors"
-              >
-                {isDeletingUser ? 'Deleting Account...' : 'Delete User Permanently'}
-              </button>
-            </form>
-
-            {deleteUserStatus && (
-              <p className="text-[11px] font-mono text-rose-300 bg-zinc-950 border border-zinc-800 rounded-xl p-2.5">
-                {deleteUserStatus}
-              </p>
-            )}
-          </div>
         </div>
       </div>
-
-      {showDeleteConfirmModal && (
-        <div className="fixed inset-0 z-[150] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-          <div className="bg-zinc-900 border border-rose-900/50 rounded-2xl p-6 max-w-md w-full shadow-2xl space-y-4">
-            <h3 className="text-sm font-bold text-rose-400">Confirm Permanent Deletion</h3>
-            <p className="text-xs text-zinc-300 leading-relaxed">
-              You are about to permanently delete <span className="font-mono text-rose-300 font-semibold">@{deleteTargetEmail}</span> and all their data. This cannot be undone.
-            </p>
-            <div className="flex items-center gap-3 pt-2">
-              <button
-                type="button"
-                onClick={() => setShowDeleteConfirmModal(false)}
-                className="flex-1 py-2.5 px-4 bg-zinc-800 hover:bg-zinc-700 text-zinc-100 font-bold rounded-xl text-xs transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleConfirmDeleteUserAccount}
-                className="py-2 px-3 bg-rose-600 hover:bg-rose-500 text-white font-semibold rounded-lg text-[11px] transition-colors shrink-0"
-              >
-                Delete forever
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {deleteToast && (
         <div className="fixed bottom-6 right-6 z-[160] bg-zinc-950 border border-teal-500/30 text-teal-400 px-4 py-3 rounded-xl shadow-2xl text-xs font-semibold flex items-center gap-2 animate-bounce">
