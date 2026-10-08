@@ -12,7 +12,9 @@ import type {
   NonScaleVictory,
   PantryItem
 } from '../types/index.js';
-import { api } from '../services/api.js';
+import { signOut } from 'firebase/auth';
+import { auth } from '../firebase.js';
+import { api, getEmptyClientProfile } from '../services/api.js';
 import { calculateDailyCalorieTarget, calculateMacroTargets } from '../utils/nutritionMath.js';
 import { triggerHaptic } from '../utils/haptics.js';
 import { detectDefaultLanguage, SupportedLanguage, syncHtmlLangAttribute } from '../utils/i18n.js';
@@ -116,6 +118,7 @@ interface AppContextType {
   deletePantryEntry: (id: string) => Promise<void>;
   refreshDayData: () => Promise<void>;
   onAuthSuccess: () => Promise<void>;
+  signOutUser: () => Promise<void>;
 }
 
 const getSavedThemeMode = (): 'dark' | 'light' | 'auto' => {
@@ -945,6 +948,51 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     await refreshDayData();
   };
 
+  const signOutUser = useCallback(async () => {
+    try {
+      if (auth.currentUser) {
+        await signOut(auth);
+      }
+    } catch (err) {
+      console.warn('Firebase signOut error:', err);
+    } finally {
+      try {
+        api.logout();
+      } catch (err) {
+        console.warn('api.logout error:', err);
+      }
+      setUserId('');
+      setUserEmail('');
+      setIsGuest(true);
+      setIsDev(false);
+      setProfile(getEmptyClientProfile('Guest User', 'guest'));
+      setStats({
+        currentStreak: 0,
+        longestStreak: 0,
+        mealsLoggedTotal: 0,
+        uniqueFoodsCount: 0,
+        weightLossKg: 0,
+        badges: []
+      });
+      setDiaryItems([]);
+      setAllDiaryItems([]);
+      setExercises([]);
+      setAllExercises([]);
+      setWeights([]);
+      setAllHabits([]);
+      setTodayHabit(null);
+      setCravings([]);
+      setVictories([]);
+      setPantryItems([]);
+      setUndoToast(null);
+
+      if (typeof window !== 'undefined') {
+        window.history.pushState({}, '', '/');
+        window.dispatchEvent(new PopStateEvent('popstate'));
+      }
+    }
+  }, []);
+
   return (
     <AppContext.Provider
       value={{
@@ -1033,7 +1081,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         addPantryEntry,
         deletePantryEntry,
         refreshDayData,
-        onAuthSuccess
+        onAuthSuccess,
+        signOutUser
       }}
     >
       {offlineWarning && (

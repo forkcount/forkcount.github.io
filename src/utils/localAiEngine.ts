@@ -83,33 +83,400 @@ export interface DecipheredFoodResult {
   totalRecipeGrams?: number;
 }
 
-interface ExercisePattern {
+export interface ExercisePattern {
   keywords: RegExp;
   label: string;
   met: number;
   intensity: 'Low' | 'Moderate' | 'High';
+  caloriePerRep?: number;
 }
 
-const EXERCISE_PATTERNS: ExercisePattern[] = [
-  { keywords: /\b(sprint|sprinting|all[- ]out run|fast interval|hiit|tabata|burpee|circuit training|crossfit)\b/i, label: 'High-Intensity Intervals / Sprints', met: 10.5, intensity: 'High' },
-  { keywords: /\b(run|running|steady run|tempo run|fast jog|10\s*km\/h|12\s*km\/h|5k|10k)\b/i, label: 'Steady-Pace Running', met: 9.8, intensity: 'High' },
-  { keywords: /\b(slow jog|light jog|easy jog|warm[- ]?up jog|jogging|jog)\b/i, label: 'Slow / Moderate Jog', met: 7.0, intensity: 'Moderate' },
-  { keywords: /\b(walking interval|walk interval|brisk walk|power walk|incline walk|fast walk|hiking|hike)\b/i, label: 'Brisk Walking Intervals', met: 4.5, intensity: 'Moderate' },
-  { keywords: /\b(slow walk|cool[- ]?down walk|stroll|casual walk|walking|walk)\b/i, label: 'Walking', met: 3.5, intensity: 'Low' },
-  { keywords: /\b(spin|spinning|peloton|vigorous cycl|fast bike|road cycling)\b/i, label: 'Vigorous Cycling', met: 9.0, intensity: 'High' },
-  { keywords: /\b(cycl|bike|biking|stationary bike)\b/i, label: 'Cycling', met: 7.5, intensity: 'Moderate' },
-  { keywords: /\b(swim|swimming|laps|freestyle)\b/i, label: 'Swimming Laps', met: 8.0, intensity: 'High' },
-  { keywords: /\b(row|rowing|erg)\b/i, label: 'Rowing Machine', met: 7.5, intensity: 'High' },
-  { keywords: /\b(jump rope|skipping|box jump|plyo)\b/i, label: 'Jump Rope / Plyometrics', met: 10.0, intensity: 'High' },
-  { keywords: /\b(stair|stairmaster|stepmill|elliptical)\b/i, label: 'Stair Climber / Elliptical', met: 8.0, intensity: 'High' },
-  { keywords: /\b(heavy lift|powerlift|deadlift|squat|bench press|barbell|strength training|weightlifting|weights|lifting|dumbbell|kettlebell|resistance)\b/i, label: 'Strength & Weight Training', met: 5.5, intensity: 'Moderate' },
-  { keywords: /\b(push[- ]?up|pull[- ]?up|calisthenics|bodyweight|core|ab|abs|plank|sit[- ]?up|crunch|lunge)\b/i, label: 'Bodyweight & Core Conditioning', met: 4.8, intensity: 'Moderate' },
-  { keywords: /\b(pilates|barre)\b/i, label: 'Pilates / Core Control', met: 3.8, intensity: 'Low' },
-  { keywords: /\b(yoga|stretch|stretching|mobility|foam roll|warm[- ]?up|cool[- ]?down)\b/i, label: 'Yoga & Mobility Flow', met: 3.0, intensity: 'Low' },
-  { keywords: /\b(boxing|kickboxing|mma|sparring|heavy bag)\b/i, label: 'Boxing / Conditioning', met: 8.5, intensity: 'High' },
-  { keywords: /\b(tennis|basketball|soccer|football|badminton|squash|pickleball|racquet)\b/i, label: 'Court / Field Sport', met: 7.8, intensity: 'High' },
-  { keywords: /\b(dance|dancing|zumba|aerobics)\b/i, label: 'Dance / Aerobic Session', met: 6.5, intensity: 'Moderate' }
+export interface ExerciseEntry {
+  id: string;
+  label: string;
+  category: 'bodyweight' | 'cardio' | 'strength' | 'flexibility' | 'sports';
+  met: number;
+  intensity: 'Low' | 'Moderate' | 'High';
+  caloriePerRep?: number; // Estimated kcal burned per repetition for average 70kg body weight
+  matcher: RegExp;
+}
+
+export const EXERCISE_DATABASE: ExerciseEntry[] = [
+  // --- Bodyweight Push-ups & Specific Variants First ---
+  {
+    id: 'wall-pushups',
+    label: 'Wall Push-ups',
+    category: 'bodyweight',
+    met: 3.5,
+    intensity: 'Low',
+    caloriePerRep: 0.3, // ~0.3 kcal per rep (easier variant)
+    matcher: /\bwall\s*push[- ]*ups?\b/i
+  },
+  {
+    id: 'modified-pushups',
+    label: 'Modified Push-ups',
+    category: 'bodyweight',
+    met: 4.0,
+    intensity: 'Low',
+    caloriePerRep: 0.35,
+    matcher: /\b(?:(?:knee|kneeling|modified|incline)\s*push[- ]*ups?|push[- ]*ups?\s*(?:modified|on\s*knees|incline))\b/i
+  },
+  {
+    id: 'high-intensity-pushups',
+    label: 'High-Intensity Push-ups',
+    category: 'bodyweight',
+    met: 6.0,
+    intensity: 'High',
+    caloriePerRep: 0.6,
+    matcher: /\b(?:(?:diamond|decline|clap|clapping|explosive|weighted|archer)\s*push[- ]*ups?|push[- ]*ups?\s*(?:diamond|decline|clap|weighted))\b/i
+  },
+  {
+    id: 'pushups',
+    label: 'Push-ups',
+    category: 'bodyweight',
+    met: 4.8,
+    intensity: 'Moderate',
+    caloriePerRep: 0.5, // ~0.5 kcal per rep for standard pushups
+    matcher: /\b(?:push[- ]*ups?|press[- ]*ups?)\b/i
+  },
+
+  // --- Calisthenics & Bodyweight Movements ---
+  {
+    id: 'jumping-jacks',
+    label: 'Jumping Jacks',
+    category: 'bodyweight',
+    met: 8.0,
+    intensity: 'Moderate',
+    caloriePerRep: 0.2, // ~0.2 kcal per rep
+    matcher: /\b(?:jumping\s*jacks?|jump\s*jacks?|star\s*jumps?|jumpingjacks?)\b/i
+  },
+  {
+    id: 'jump-squats',
+    label: 'Jump Squats',
+    category: 'bodyweight',
+    met: 8.0,
+    intensity: 'High',
+    caloriePerRep: 0.6,
+    matcher: /\b(?:jump|plyo|box|explosive)\s*squats?\b/i
+  },
+  {
+    id: 'weighted-squats',
+    label: 'Weighted Squats',
+    category: 'strength',
+    met: 6.0,
+    intensity: 'Moderate',
+    caloriePerRep: 0.5,
+    matcher: /\b(?:sumo|goblet|barbell|heavy|front|back)\s*squats?\b/i
+  },
+  {
+    id: 'squats',
+    label: 'Squats',
+    category: 'bodyweight',
+    met: 5.0,
+    intensity: 'Moderate',
+    caloriePerRep: 0.4, // ~0.4 kcal per rep
+    matcher: /\b(?:air\s*squats?|bodyweight\s*squats?|squats?)\b/i
+  },
+  {
+    id: 'assisted-pullups',
+    label: 'Assisted Pull-ups',
+    category: 'bodyweight',
+    met: 5.0,
+    intensity: 'Moderate',
+    caloriePerRep: 0.6,
+    matcher: /\b(?:assisted|banded|negative)\s*(?:pull[- ]*ups?|chin[- ]*ups?)\b/i
+  },
+  {
+    id: 'pullups',
+    label: 'Pull-ups',
+    category: 'bodyweight',
+    met: 8.0,
+    intensity: 'High',
+    caloriePerRep: 1.0, // ~1.0 kcal per rep
+    matcher: /\b(?:pull[- ]*ups?|chin[- ]*ups?)\b/i
+  },
+  {
+    id: 'jump-lunges',
+    label: 'Jump Lunges',
+    category: 'bodyweight',
+    met: 7.5,
+    intensity: 'High',
+    caloriePerRep: 0.5,
+    matcher: /\b(?:jump|jumping|explosive)\s*lunges?\b/i
+  },
+  {
+    id: 'lunges',
+    label: 'Lunges',
+    category: 'bodyweight',
+    met: 4.8,
+    intensity: 'Moderate',
+    caloriePerRep: 0.35, // ~0.35 kcal per rep
+    matcher: /\b(?:walking\s*lunges?|reverse\s*lunges?|forward\s*lunges?|lunges?)\b/i
+  },
+  {
+    id: 'burpees',
+    label: 'Burpees',
+    category: 'bodyweight',
+    met: 10.0,
+    intensity: 'High',
+    caloriePerRep: 0.6, // ~0.6 kcal per rep
+    matcher: /\bburpees?\b/i
+  },
+  {
+    id: 'situps',
+    label: 'Sit-ups',
+    category: 'bodyweight',
+    met: 4.5,
+    intensity: 'Moderate',
+    caloriePerRep: 0.35, // ~0.35 kcal per rep
+    matcher: /\b(?:sit[- ]*ups?|crunches?|ab\s*crunches?|abdominal\s*crunches?)\b/i
+  },
+  {
+    id: 'wall-sit',
+    label: 'Wall Sit',
+    category: 'bodyweight',
+    met: 4.0,
+    intensity: 'Moderate',
+    matcher: /\bwall\s*sits?\b/i
+  },
+  {
+    id: 'plank',
+    label: 'Plank',
+    category: 'bodyweight',
+    met: 4.8,
+    intensity: 'Moderate',
+    matcher: /\b(?:plank(?:ing)?|front\s*plank|side\s*plank)\b/i
+  },
+  {
+    id: 'calf-raises',
+    label: 'Calf Raises',
+    category: 'bodyweight',
+    met: 3.5,
+    intensity: 'Low',
+    caloriePerRep: 0.15, // ~0.15 kcal per rep
+    matcher: /\b(?:calf\s*raises?|heel\s*raises?|standing\s*calf\s*raises?|seated\s*calf\s*raises?)\b/i
+  },
+  {
+    id: 'dips',
+    label: 'Dips',
+    category: 'bodyweight',
+    met: 6.0,
+    intensity: 'Moderate',
+    caloriePerRep: 0.5,
+    matcher: /\b(?:tricep\s*dips?|bench\s*dips?|parallel\s*bar\s*dips?|dips?)\b/i
+  },
+  {
+    id: 'mountain-climbers',
+    label: 'Mountain Climbers',
+    category: 'bodyweight',
+    met: 8.0,
+    intensity: 'High',
+    caloriePerRep: 0.2,
+    matcher: /\bmountain\s*climbers?\b/i
+  },
+  {
+    id: 'high-knees',
+    label: 'High Knees',
+    category: 'bodyweight',
+    met: 8.0,
+    intensity: 'High',
+    caloriePerRep: 0.15,
+    matcher: /\bhigh\s*knees?\b/i
+  },
+  {
+    id: 'glute-bridges',
+    label: 'Glute Bridges',
+    category: 'bodyweight',
+    met: 3.8,
+    intensity: 'Low',
+    caloriePerRep: 0.3,
+    matcher: /\b(?:glute\s*bridges?|hip\s*thrusts?)\b/i
+  },
+
+  // --- Cardio & Aerobic Activities ---
+  {
+    id: 'sprints',
+    label: 'High-Intensity Intervals / Sprints',
+    category: 'cardio',
+    met: 10.5,
+    intensity: 'High',
+    matcher: /\b(?:sprint(?:ing|s)?|all[- ]out\s*run|fast\s*intervals?|hiit|tabata|circuit\s*training|crossfit)\b/i
+  },
+  {
+    id: 'running',
+    label: 'Steady-Pace Running',
+    category: 'cardio',
+    met: 9.8,
+    intensity: 'High',
+    matcher: /\b(?:run|running|steady\s*run|tempo\s*run|fast\s*jog(?:ging)?|5k|10k)\b/i
+  },
+  {
+    id: 'jogging',
+    label: 'Slow / Moderate Jog',
+    category: 'cardio',
+    met: 7.0,
+    intensity: 'Moderate',
+    matcher: /\b(?:slow\s*jog(?:ging)?|light\s*jog(?:ging)?|easy\s*jog(?:ging)?|warm[- ]?up\s*jog(?:ging)?|jog(?:ging)?)\b/i
+  },
+  {
+    id: 'brisk-walking',
+    label: 'Brisk Walking Intervals',
+    category: 'cardio',
+    met: 4.5,
+    intensity: 'Moderate',
+    matcher: /\b(?:brisk\s*walk(?:ing)?|power\s*walk(?:ing)?|incline\s*walk(?:ing)?|fast\s*walk(?:ing)?|hik(?:e|ing)|walking\s*intervals?)\b/i
+  },
+  {
+    id: 'walking',
+    label: 'Walking',
+    category: 'cardio',
+    met: 3.5,
+    intensity: 'Low',
+    matcher: /\b(?:slow\s*walk|cool[- ]?down\s*walk|stroll|casual\s*walk|walking|walk)\b/i
+  },
+  {
+    id: 'vigorous-cycling',
+    label: 'Vigorous Cycling',
+    category: 'cardio',
+    met: 9.0,
+    intensity: 'High',
+    matcher: /\b(?:spin|spinning|peloton|vigorous\s*cycl(?:e|ing)?|fast\s*bik(?:e|ing)?|road\s*cycl(?:e|ing)?)\b/i
+  },
+  {
+    id: 'cycling',
+    label: 'Cycling',
+    category: 'cardio',
+    met: 7.5,
+    intensity: 'Moderate',
+    matcher: /\b(?:cycl(?:e|ing|es)?|bik(?:e|ing|es)?|bicycl(?:e|ing)?|stationary\s*bik(?:e|ing)?)\b/i
+  },
+  {
+    id: 'swimming',
+    label: 'Swimming Laps',
+    category: 'cardio',
+    met: 8.0,
+    intensity: 'High',
+    matcher: /\b(?:swim|swimming|laps|freestyle|breaststroke)\b/i
+  },
+  {
+    id: 'rowing',
+    label: 'Rowing Machine',
+    category: 'cardio',
+    met: 7.5,
+    intensity: 'High',
+    matcher: /\b(?:row|rowing|erg|ergometer)\b/i
+  },
+  {
+    id: 'jump-rope',
+    label: 'Jump Rope / Plyometrics',
+    category: 'cardio',
+    met: 10.0,
+    intensity: 'High',
+    matcher: /\b(?:jump\s*rope|skipping|rope\s*jumping|box\s*jumps?|plyo)\b/i
+  },
+  {
+    id: 'stair-climber',
+    label: 'Stair Climber / Elliptical',
+    category: 'cardio',
+    met: 8.0,
+    intensity: 'High',
+    matcher: /\b(?:stairs?|stairmaster|stepmill|elliptical)\b/i
+  },
+  {
+    id: 'strength-training',
+    label: 'Strength & Weight Training',
+    category: 'strength',
+    met: 5.5,
+    intensity: 'Moderate',
+    matcher: /\b(?:heavy\s*lift(?:ing)?|powerlift(?:ing)?|deadlifts?|bench\s*press|barbell|strength\s*training|weightlifting|weights|lifting|dumbbells?|kettlebells?|resistance\s*bands?)\b/i
+  },
+  {
+    id: 'pilates',
+    label: 'Pilates / Core Control',
+    category: 'flexibility',
+    met: 3.8,
+    intensity: 'Low',
+    matcher: /\b(?:pilates|barre)\b/i
+  },
+  {
+    id: 'yoga',
+    label: 'Yoga & Mobility Flow',
+    category: 'flexibility',
+    met: 3.0,
+    intensity: 'Low',
+    matcher: /\b(?:yoga|stretch|stretching|mobility|foam\s*roll(?:ing)?|warm[- ]?up|cool[- ]?down)\b/i
+  },
+  {
+    id: 'boxing',
+    label: 'Boxing / Conditioning',
+    category: 'sports',
+    met: 8.5,
+    intensity: 'High',
+    matcher: /\b(?:boxing|kickboxing|mma|sparring|heavy\s*bag|martial\s*arts)\b/i
+  },
+  {
+    id: 'court-sports',
+    label: 'Court / Field Sport',
+    category: 'sports',
+    met: 7.8,
+    intensity: 'High',
+    matcher: /\b(?:tennis|basketball|soccer|football|badminton|squash|pickleball|volleyball|racquetball|racquet)\b/i
+  },
+  {
+    id: 'dance',
+    label: 'Dance / Aerobic Session',
+    category: 'sports',
+    met: 6.5,
+    intensity: 'Moderate',
+    matcher: /\b(?:dance|dancing|zumba|aerobics)\b/i
+  }
 ];
+
+// Backward-compatible alias for EXERCISE_PATTERNS
+export const EXERCISE_PATTERNS: ExercisePattern[] = EXERCISE_DATABASE.map(e => ({
+  keywords: e.matcher,
+  label: e.label,
+  met: e.met,
+  intensity: e.intensity,
+  caloriePerRep: e.caloriePerRep
+}));
+
+/**
+ * Matches user input clause to the best exercise entry in the database.
+ * Supports fuzzy matching for variants (e.g., "wall pushups" matches lower-intensity Wall Push-ups).
+ */
+export function matchExercisePattern(clause: string): ExerciseEntry {
+  // 1. Direct matcher check against all definitions
+  for (const entry of EXERCISE_DATABASE) {
+    if (entry.matcher.test(clause)) {
+      return entry;
+    }
+  }
+
+  // 2. Fuzzy modifier check: if pushup root matches, resolve to appropriate variant
+  if (/\b(?:push[- ]*ups?|press[- ]*ups?)\b/i.test(clause)) {
+    if (/\bwall\b/i.test(clause)) {
+      return EXERCISE_DATABASE.find(e => e.id === 'wall-pushups')!;
+    }
+    if (/\b(?:knee|kneeling|modified|incline)\b/i.test(clause)) {
+      return EXERCISE_DATABASE.find(e => e.id === 'modified-pushups')!;
+    }
+    if (/\b(?:diamond|decline|clap|clapping|explosive|weighted)\b/i.test(clause)) {
+      return EXERCISE_DATABASE.find(e => e.id === 'high-intensity-pushups')!;
+    }
+    return EXERCISE_DATABASE.find(e => e.id === 'pushups')!;
+  }
+
+  // 3. Fallback General Conditioning
+  return {
+    id: 'general-conditioning',
+    label: 'General Conditioning',
+    category: 'bodyweight',
+    met: 5.5,
+    intensity: 'Moderate',
+    matcher: /.*/
+  };
+}
 
 const WORD_NUMBERS: Record<string, number> = {
   a: 1,
@@ -209,63 +576,112 @@ function splitExerciseClauses(rawText: string): string[] {
   return finalClauses.filter(Boolean);
 }
 
-function extractDurationMinutes(clause: string): number {
+interface ExtractedClauseDetails {
+  minutes: number;
+  hasExplicitDuration: boolean;
+  reps?: number;
+  distanceKm?: number;
+  weightKg?: number;
+}
+
+function extractClauseDetails(clause: string, exercise: ExerciseEntry): ExtractedClauseDetails {
   let totalMinutes = 0;
   let matchedTime = false;
 
-  // Hours
+  // 1. Explicit duration: Hours
   const hrMatches = Array.from(clause.matchAll(/(\d+(?:\.\d+)?)\s*(?:hours?|hrs?|hr|h)\b/gi));
   for (const m of hrMatches) {
     totalMinutes += parseFloat(m[1]) * 60;
     matchedTime = true;
   }
 
-  // Minutes
+  // Explicit duration: Minutes
   const minMatches = Array.from(clause.matchAll(/(\d+(?:\.\d+)?)\s*(?:minutes?|mins?|min|m)\b/gi));
   for (const m of minMatches) {
     totalMinutes += parseFloat(m[1]);
     matchedTime = true;
   }
 
-  // Seconds
+  // Explicit duration: Seconds
   const secMatches = Array.from(clause.matchAll(/(\d+(?:\.\d+)?)\s*(?:seconds?|secs?|sec|s)\b/gi));
   for (const m of secMatches) {
     totalMinutes += parseFloat(m[1]) / 60;
     matchedTime = true;
   }
 
-  if (matchedTime && totalMinutes > 0) {
-    return Math.max(0.5, Math.round(totalMinutes * 10) / 10);
-  }
-
-  // Check distance (e.g., "5km run" or "3 miles walk")
+  // Distance extraction (km / miles)
+  let distanceKm: number | undefined;
   const kmMatch = clause.match(/(\d+(?:\.\d+)?)\s*(?:km|kilometers?)\b/i);
   if (kmMatch) {
-    const km = parseFloat(kmMatch[1]);
-    const isWalk = /\bwalk/i.test(clause);
-    return Math.round(km * (isWalk ? 11 : 6));
+    distanceKm = parseFloat(kmMatch[1]);
+    if (!matchedTime) {
+      const isWalk = /\bwalk/i.test(clause);
+      totalMinutes = Math.round(distanceKm * (isWalk ? 11 : 6));
+      matchedTime = true;
+    }
   }
 
   const mileMatch = clause.match(/(\d+(?:\.\d+)?)\s*(?:miles?|mi)\b/i);
   if (mileMatch) {
     const mi = parseFloat(mileMatch[1]);
-    const isWalk = /\bwalk/i.test(clause);
-    return Math.round(mi * (isWalk ? 17 : 9.5));
+    distanceKm = Math.round(mi * 1.60934 * 10) / 10;
+    if (!matchedTime) {
+      const isWalk = /\bwalk/i.test(clause);
+      totalMinutes = Math.round(mi * (isWalk ? 17 : 9.5));
+      matchedTime = true;
+    }
   }
 
-  // Check sets x reps (e.g., "4 sets of 10 squats")
-  const setsMatch = clause.match(/(\d+)\s*sets?/i);
-  if (setsMatch) {
-    return Math.max(5, parseInt(setsMatch[1], 10) * 3);
+  // Weight extraction (kg)
+  let weightKg: number | undefined;
+  const kgMatch = clause.match(/(\d+(?:\.\d+)?)\s*kg\b/i);
+  if (kgMatch) {
+    weightKg = parseFloat(kgMatch[1]);
   }
 
-  // Fallback bare number in clause
-  const bareNum = clause.match(/\b(\d+(?:\.\d+)?)\b/);
-  if (bareNum) {
-    return Math.max(1, parseFloat(bareNum[1]));
+  // 2. Reps extraction
+  let reps: number | undefined;
+  const setsRepsMatch = clause.match(/(\d+)\s*sets?\s*(?:of|x|\*)\s*(\d+)\s*(?:reps?)?/i);
+  if (setsRepsMatch) {
+    const sets = parseInt(setsRepsMatch[1], 10);
+    const setReps = parseInt(setsRepsMatch[2], 10);
+    reps = sets * setReps;
+  } else {
+    const explicitReps = clause.match(/(\d+)\s*reps?\b/i);
+    if (explicitReps) {
+      reps = parseInt(explicitReps[1], 10);
+    } else if (!matchedTime) {
+      // Look for leading number ("10 wall pushups"), trailing number ("pushups 20"), or bare number
+      const leadingNum = clause.match(/^\s*(\d+(?:\.\d+)?)\b/);
+      const trailingNum = clause.match(/\b(\d+(?:\.\d+)?)\s*$/);
+      const bareNum = leadingNum || trailingNum || clause.match(/\b(\d+(?:\.\d+)?)\b/);
+
+      if (bareNum) {
+        const val = parseFloat(bareNum[1]);
+        if (exercise.caloriePerRep) {
+          reps = Math.round(val);
+        } else {
+          // For duration-based activity without caloriePerRep, bare number is minutes (e.g. "15 walking")
+          totalMinutes = val;
+          matchedTime = true;
+        }
+      }
+    }
   }
 
-  return 15; // default 15 mins if unspecified
+  const minutes = matchedTime && totalMinutes > 0
+    ? Math.max(0.5, Math.round(totalMinutes * 10) / 10)
+    : reps
+    ? Math.max(1, Math.round((reps * 3 / 60) * 10) / 10)
+    : 15;
+
+  return {
+    minutes,
+    hasExplicitDuration: matchedTime,
+    reps,
+    distanceKm,
+    weightKg
+  };
 }
 
 export function decipherExerciseText(rawInput: string, userWeightKg = 70): DecipheredExerciseResult {
@@ -285,26 +701,15 @@ export function decipherExerciseText(rawInput: string, userWeightKg = 70): Decip
   }
 
   const segments: DecipheredExerciseSegment[] = clauses.map((clause) => {
-    const minutes = extractDurationMinutes(clause);
+    // 1. Match exercise pattern
+    const matchedExercise = matchExercisePattern(clause);
 
-    // Find matching exercise pattern
-    let matchedPattern: ExercisePattern = {
-      keywords: /.*/,
-      label: 'General Conditioning',
-      met: 5.5,
-      intensity: 'Moderate'
-    };
+    // 2. Extract duration and reps
+    const details = extractClauseDetails(clause, matchedExercise);
 
-    for (const pattern of EXERCISE_PATTERNS) {
-      if (pattern.keywords.test(clause)) {
-        matchedPattern = pattern;
-        break;
-      }
-    }
-
-    // Intensity modifiers in user text
-    let met = matchedPattern.met;
-    let intensity = matchedPattern.intensity;
+    // 3. Intensity modifiers in user text
+    let met = matchedExercise.met;
+    let intensity = matchedExercise.intensity;
     if (/\b(slow|easy|light|gentle|warm[- ]?up|cool[- ]?down|recovery)\b/i.test(clause)) {
       met = Math.max(2.5, Math.round((met * 0.85) * 10) / 10);
       if (met < 4.5) intensity = 'Low';
@@ -313,23 +718,27 @@ export function decipherExerciseText(rawInput: string, userWeightKg = 70): Decip
       if (met >= 7.5) intensity = 'High';
     }
 
-    const caloriesBurned = Math.max(1, Math.round(met * weight * (minutes / 60)));
-
-    // Optional distance / weight extraction
-    const kmMatch = clause.match(/(\d+(?:\.\d+)?)\s*km\b/i);
-    const kgMatch = clause.match(/(\d+(?:\.\d+)?)\s*kg\b/i);
-    const repsMatch = clause.match(/(\d+)\s*reps?\b/i);
+    // 4. Calculate calories burned
+    let caloriesBurned = 0;
+    if (details.reps && details.reps > 0 && matchedExercise.caloriePerRep && !details.hasExplicitDuration) {
+      // Rep-based calculation scaled to user body weight (~70kg baseline)
+      const weightFactor = weight / 70;
+      caloriesBurned = Math.max(1, Math.round(details.reps * matchedExercise.caloriePerRep * weightFactor));
+    } else {
+      // Duration-based MET calculation
+      caloriesBurned = Math.max(1, Math.round(met * weight * (details.minutes / 60)));
+    }
 
     return {
       description: clause,
-      activityName: matchedPattern.label,
-      minutes,
+      activityName: matchedExercise.label,
+      minutes: details.minutes,
       met,
       intensity,
       caloriesBurned,
-      distanceKm: kmMatch ? parseFloat(kmMatch[1]) : undefined,
-      weightKg: kgMatch ? parseFloat(kgMatch[1]) : undefined,
-      reps: repsMatch ? parseInt(repsMatch[1], 10) : undefined
+      distanceKm: details.distanceKm,
+      weightKg: details.weightKg,
+      reps: details.reps
     };
   });
 
@@ -343,12 +752,21 @@ export function decipherExerciseText(rawInput: string, userWeightKg = 70): Decip
     weightedMet >= 7.5 ? 'High' : weightedMet >= 4.5 ? 'Moderate' : 'Low';
 
   const uniqueNames = Array.from(new Set(segments.map(s => s.activityName)));
-  const summaryTitle =
-    uniqueNames.length === 1
-      ? `${uniqueNames[0]} (${totalMinutes} min)`
-      : uniqueNames.length === 2
-      ? `${uniqueNames[0]} & ${uniqueNames[1]}`
-      : `${uniqueNames[0]} + ${uniqueNames.length - 1} Interval Phases`;
+  let summaryTitle = 'Workout';
+  if (segments.length === 1) {
+    const s = segments[0];
+    summaryTitle = s.reps
+      ? `${s.activityName} (${s.reps} reps)`
+      : `${s.activityName} (${totalMinutes} min)`;
+  } else if (uniqueNames.length === 2) {
+    summaryTitle = `${uniqueNames[0]} & ${uniqueNames[1]}`;
+  } else if (uniqueNames.length > 2) {
+    summaryTitle = `${uniqueNames[0]} + ${uniqueNames.length - 1} Exercises`;
+  } else {
+    summaryTitle = `${uniqueNames[0]} (${totalMinutes} min)`;
+  }
+
+  const segmentNotes = segments.map(s => s.reps ? `${s.reps} reps of ${s.activityName}` : `${s.activityName} (${s.minutes}m)`).join(', ');
 
   return {
     summaryTitle,
@@ -357,7 +775,7 @@ export function decipherExerciseText(rawInput: string, userWeightKg = 70): Decip
     overallIntensity,
     totalCaloriesBurned,
     segments,
-    explanation: `Deciphered ${segments.length} activity segment${segments.length > 1 ? 's' : ''} (${totalMinutes} mins total at ${weightedMet} avg MET for ${weight} kg body weight).`
+    explanation: `Deciphered ${segments.length} activity segment${segments.length > 1 ? 's' : ''} (${segmentNotes} · ${totalCaloriesBurned} kcal burned at ${weightedMet} avg MET for ${weight} kg body weight).`
   };
 }
 

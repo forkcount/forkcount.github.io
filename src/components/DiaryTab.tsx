@@ -70,6 +70,7 @@ export const DiaryTab: React.FC<DiaryTabProps> = ({ onNavigateToFitness }) => {
     exercises,
     allExercises,
     addExerciseItem,
+    deleteExerciseItem,
     profile,
     macroTarget,
     todayHabit,
@@ -194,7 +195,8 @@ export const DiaryTab: React.FC<DiaryTabProps> = ({ onNavigateToFitness }) => {
         met: decipheredExercise.averageMet,
         minutes: Math.max(1, Math.round(decipheredExercise.totalMinutes)),
         caloriesBurned: decipheredExercise.totalCaloriesBurned,
-        intensity: decipheredExercise.overallIntensity
+        intensity: decipheredExercise.overallIntensity,
+        reps: decipheredExercise.segments.length === 1 ? decipheredExercise.segments[0].reps : undefined
       });
       setExerciseInput('');
       localStorage.removeItem('forkcount_draft_diary_exercise');
@@ -1337,7 +1339,10 @@ export const DiaryTab: React.FC<DiaryTabProps> = ({ onNavigateToFitness }) => {
                   {decipheredExercise.segments.map((seg, i) => (
                     <div key={i} className="flex items-center justify-between text-[11px] text-zinc-300">
                       <span>
-                        {seg.activityName} <span className="text-zinc-500 font-mono">({seg.minutes} min)</span>
+                        {seg.activityName}{' '}
+                        <span className="text-zinc-500 font-mono">
+                          ({seg.reps ? `${seg.reps} reps` : `${seg.minutes} min`})
+                        </span>
                       </span>
                       <span className="font-mono text-teal-400 font-semibold">+{seg.caloriesBurned} kcal</span>
                     </div>
@@ -1370,6 +1375,41 @@ export const DiaryTab: React.FC<DiaryTabProps> = ({ onNavigateToFitness }) => {
               </button>
             </div>
           </form>
+        )}
+
+        {exercises.length > 0 && (
+          <div className="pt-2 border-t border-zinc-800/80 space-y-1.5">
+            {exercises.map((item) => (
+              <div
+                key={item.id}
+                className="flex items-center justify-between p-2 bg-zinc-950/60 rounded-xl border border-zinc-800/70 text-xs"
+              >
+                <div>
+                  <span className="font-medium text-zinc-200 block">{item.activityName}</span>
+                  <div className="flex items-center gap-1.5 text-[10px] text-zinc-500 font-mono mt-0.5">
+                    <span>{item.reps ? `${item.reps} reps` : `${item.minutes} mins`}</span>
+                    <span>·</span>
+                    <span className="text-zinc-400">MET {item.met}</span>
+                    <span>·</span>
+                    <span className="text-teal-400/80">{item.intensity}</span>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2.5">
+                  <span className="font-bold text-teal-400 font-mono text-xs">
+                    +{item.caloriesBurned} kcal
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => deleteExerciseItem(item.id)}
+                    className="p-1 text-zinc-600 hover:text-rose-400 rounded transition-colors"
+                    aria-label="Delete exercise"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
         )}
       </div>
 

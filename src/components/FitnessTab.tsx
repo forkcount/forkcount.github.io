@@ -247,7 +247,7 @@ export const FitnessTab: React.FC = () => {
     const liveDeciphered = decipherExerciseText(workoutDescription, userWeightKg);
     if (!workoutDescription.trim() || liveDeciphered.totalCaloriesBurned <= 0) return;
 
-    const minErr = validateExerciseMinutes(liveDeciphered.totalMinutes);
+    const minErr = validateExerciseMinutes(Math.max(1, Math.round(liveDeciphered.totalMinutes)));
     if (minErr) {
       setExerciseError(minErr);
       return;
@@ -263,7 +263,7 @@ export const FitnessTab: React.FC = () => {
         caloriesBurned: liveDeciphered.totalCaloriesBurned,
         intensity: liveDeciphered.overallIntensity,
         weightKg: liftWeightKg ? Number(liftWeightKg) : undefined,
-        reps: liftReps ? Number(liftReps) : undefined,
+        reps: liftReps ? Number(liftReps) : (liveDeciphered.segments.length === 1 ? liveDeciphered.segments[0].reps : undefined),
         distanceKm: distanceKm ? Number(distanceKm) : undefined,
         plankSeconds: plankSeconds ? Number(plankSeconds) : undefined
       });
@@ -495,7 +495,7 @@ export const FitnessTab: React.FC = () => {
                     <div className="truncate pr-2">
                       <span className="text-zinc-200 font-medium">{seg.activityName}</span>
                       <span className="text-zinc-500 font-mono ml-1.5">
-                        ({seg.minutes} min · MET {seg.met} · {seg.intensity})
+                        ({seg.reps ? `${seg.reps} reps · ` : ''}{seg.minutes} min · MET {seg.met} · {seg.intensity})
                       </span>
                     </div>
                     <span className="font-mono font-semibold text-teal-400 shrink-0">
@@ -879,7 +879,7 @@ export const FitnessTab: React.FC = () => {
                       {item.activityName}
                     </span>
                     <div className="flex items-center gap-2 text-[10px] text-zinc-500 font-mono mt-0.5">
-                      <span>{item.minutes} mins</span>
+                      <span>{item.reps && !item.weightKg ? `${item.reps} reps · ` : ''}{item.minutes} mins</span>
                       <span>·</span>
                       <span className="text-zinc-400">MET {item.met}</span>
                       <span>·</span>

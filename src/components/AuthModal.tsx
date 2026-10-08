@@ -36,8 +36,75 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onAuthComplete }) => {
     onAuthSuccess,
     profile,
     updateUserProfile,
-    addWeightLog
+    addWeightLog,
+    signOutUser
   } = useApp();
+
+  const handleCloseModal = async () => {
+    // 1. Cancel in-progress signup (do not leave partial account in Firestore or localStorage)
+    const isIncompleteSignup = flowStage.startsWith('step') || mode === 'signup';
+    if (isIncompleteSignup) {
+      if (userId && !userId.startsWith('guest_')) {
+        try {
+          await api.deleteAccount().catch(() => {});
+        } catch (err) {
+          console.warn('Failed to delete incomplete account on cancel:', err);
+        }
+      }
+      try {
+        await signOutUser();
+      } catch (err) {
+        console.warn('signOutUser on cancel error:', err);
+      }
+      try {
+        api.logout();
+      } catch (err) {
+        console.warn('api.logout on cancel error:', err);
+      }
+    } else {
+      if (!userId || userId.startsWith('guest_')) {
+        try {
+          api.logout();
+        } catch {}
+      }
+    }
+
+    // 2. Clear all partial form state
+    setUsername('');
+    setPassword('');
+    setConfirmPassword('');
+    setShowPassword(false);
+    setShowConfirmPassword(false);
+    setErrorMsg('');
+    setResetEmail('');
+    setResetCode('');
+    setNewResetPassword('');
+    setResetStage('request');
+    setResetSentSuccess(false);
+    setCountry('');
+    setCountrySearch('');
+    setIsCountryDropdownOpen(false);
+    setName('');
+    setGender('');
+    setAge('');
+    setHeightCm('');
+    setCurrentWeightKg('');
+    setGoalWeightKg('');
+    setBodyFatPercent('');
+    setFitnessLevel('');
+    setDailyActivity('');
+    setGoal('');
+    setFlowStage('credentials');
+
+    // 3. Close the modal
+    closeAuthModal();
+
+    // 4. Redirect to "/" (landing page), not /dashboard or /diary
+    if (typeof window !== 'undefined') {
+      window.history.pushState({}, '', '/');
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    }
+  };
 
   const [mode, setMode] = useState<'signup' | 'login'>(authModalMode || 'login');
 
@@ -315,15 +382,13 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onAuthComplete }) => {
               </p>
             )}
           </div>
-          {flowStage === 'credentials' && (
-            <button
-              onClick={closeAuthModal}
-              className="rounded-xl p-1.5 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
-              aria-label="Close"
-            >
-              <X className="size-5" />
-            </button>
-          )}
+          <button
+            onClick={handleCloseModal}
+            className="rounded-xl p-1.5 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200 transition-colors"
+            aria-label="Close"
+          >
+            <X className="size-5" />
+          </button>
         </div>
 
         {/* Progress Bar for Steps */}

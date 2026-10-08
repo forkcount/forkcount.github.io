@@ -125,8 +125,30 @@ export const MeTab: React.FC<MeTabProps> = ({
     allDiaryItems,
     exercises,
     allExercises,
-    waterGlasses
+    waterGlasses,
+    signOutUser
   } = useApp();
+
+  const handleSignOut = async () => {
+    try {
+      await signOutUser();
+    } catch (err) {
+      console.error('Sign out error:', err);
+    } finally {
+      try {
+        api.logout();
+      } catch (e) {
+        console.error('api.logout error:', e);
+      }
+      if (onOpenDescription) {
+        onOpenDescription();
+      }
+      if (typeof window !== 'undefined') {
+        window.history.pushState({}, '', '/');
+        window.dispatchEvent(new PopStateEvent('popstate'));
+      }
+    }
+  };
 
   const getBadgeProgress = (badgeId: string): { current: number; target: number; unit: string } => {
     const streak = stats?.foodStreak || 0;
@@ -1818,6 +1840,15 @@ export const MeTab: React.FC<MeTabProps> = ({
                 </span>
               </div>
             </div>
+            <button
+              type="button"
+              onClick={handleSignOut}
+              className="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-750 text-rose-300 hover:text-rose-200 border border-zinc-700 hover:border-rose-900/50 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+              aria-label="Sign out"
+            >
+              <LogOut className="w-3.5 h-3.5 text-rose-400" />
+              <span>Sign out</span>
+            </button>
           </div>
 
           <div className="grid grid-cols-2 gap-2">
@@ -1978,7 +2009,7 @@ export const MeTab: React.FC<MeTabProps> = ({
                       })()}
                     </span>
                   </div>
-                  {!sess.isCurrent && (
+                  {!sess.isCurrent ? (
                     <button
                       type="button"
                       onClick={async () => {
@@ -1986,6 +2017,14 @@ export const MeTab: React.FC<MeTabProps> = ({
                         setSessionsList((prev) => prev.filter((s) => s.id !== sess.id));
                       }}
                       className="px-2.5 py-1 bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 rounded-lg text-[11px] text-zinc-300"
+                    >
+                      Sign out
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={handleSignOut}
+                      className="px-2.5 py-1 bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 rounded-lg text-[11px] text-rose-400 hover:text-rose-300 font-medium"
                     >
                       Sign out
                     </button>
@@ -2117,6 +2156,17 @@ export const MeTab: React.FC<MeTabProps> = ({
           >
             <Trash2 className="w-4 h-4 text-amber-400" />
             Clear all data
+          </button>
+
+          {/* Sign Out Action */}
+          <button
+            type="button"
+            onClick={handleSignOut}
+            aria-label="Sign out"
+            className="w-full min-h-[44px] p-2.5 bg-zinc-950 hover:bg-zinc-850 border border-zinc-800 text-rose-400 hover:text-rose-300 rounded-xl text-xs font-semibold flex items-center justify-center gap-2 transition-colors cursor-pointer mt-2"
+          >
+            <LogOut className="w-4 h-4 text-rose-400" />
+            <span>Sign out</span>
           </button>
 
           {/* Destructive Action: Delete Account */}

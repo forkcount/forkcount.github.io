@@ -128,7 +128,7 @@ function hashClientPassword(password: string): string {
   return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(16);
 }
 
-function getEmptyClientProfile(name: string = '', username: string = ''): UserProfile {
+export function getEmptyClientProfile(name: string = '', username: string = ''): UserProfile {
   return {
     name,
     username,
@@ -262,8 +262,36 @@ class ApiService {
   }
 
   logout() {
+    this.token = null;
     localStorage.removeItem(USER_EMAIL_KEY);
-    this.clearToken();
+    localStorage.removeItem(TOKEN_KEY);
+    sessionStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(GUEST_KEY);
+    localStorage.removeItem(DEV_DEVICE_KEY);
+    localStorage.removeItem('calory_dev_device');
+    localStorage.removeItem('caloriq_session_token');
+    localStorage.removeItem('caloriq_user_email');
+    localStorage.removeItem('caloriq_guest_id');
+    localStorage.removeItem('forkcount_last_signed_in_at');
+    this.localCache = {
+      diary: {},
+      water: {},
+      exercise: {},
+      weights: {},
+      plans: {},
+      savedFoods: {},
+      savedRecipes: {},
+      mealTemplates: {},
+      pantry: {},
+      cravings: {},
+      victories: {},
+      habits: {},
+      users: {}
+    };
+    if (this.activeUnsubscribe) {
+      this.activeUnsubscribe();
+      this.activeUnsubscribe = null;
+    }
   }
 
   endGuestSession() {
@@ -381,10 +409,9 @@ class ApiService {
         userId: token
       };
     }
-    const hasDevDevice = getStoredDevDeviceRecord() !== null;
     return {
       hasValidToken: false,
-      devAccountExists: hasDevDevice
+      devAccountExists: false
     };
   }
 
