@@ -37,7 +37,13 @@
   color: #a1a1aa !important;
 }
 
-/* #5 Skip-to-content link at the top of every page */
+.content {
+  scroll-behavior: auto;
+}
+
+.food-input {
+  scroll-margin-top: 120px;
+}
 .skip-to-content {
   position: fixed;
   top: -100px;

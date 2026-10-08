@@ -388,7 +388,7 @@ export const AddFoodModal: React.FC<AddFoodModalProps> = ({ isOpen, onClose, def
       setParsedResult(parsed);
       setGramOverrides({});
       setFormError(null);
-    }, 250);
+    }, 400);
 
     return () => clearTimeout(timer);
   }, [inputText, macroTarget, mealType]);
@@ -961,6 +961,7 @@ export const AddFoodModal: React.FC<AddFoodModalProps> = ({ isOpen, onClose, def
                       setInputText(e.target.value);
                       if (formError) setFormError(null);
                     }}
+                    onFocus={(e) => e.preventDefault()}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter' && !e.shiftKey) {
                         e.preventDefault();
@@ -968,7 +969,7 @@ export const AddFoodModal: React.FC<AddFoodModalProps> = ({ isOpen, onClose, def
                       }
                     }}
                     placeholder="Type or speak: 89g mango, 2 egs and tost, 1 pack Doritos, 1 can Coke Zero, or paste a recipe..."
-                    className="w-full bg-transparent text-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none resize-none leading-relaxed"
+                    className="food-input w-full bg-transparent text-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none resize-none leading-relaxed"
                   />
                 </div>
 
