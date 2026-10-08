@@ -1,13 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Camera, X, ScanLine, AlertCircle, ArrowRight } from 'lucide-react';
+import { Camera, X, ScanLine, AlertCircle, ArrowRight, Loader2 } from 'lucide-react';
+import { lookupBarcodeProduct, BarcodeProduct } from '../services/barcodeService.js';
 
 interface BarcodeScannerModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onDetected: (foodQuery: string) => void;
+  onDetected: (foodQuery: string, product?: BarcodeProduct) => void;
 }
 
 const DEMO_BARCODES = [
+  { code: '3800748051053', name: 'Fresh Milk 3% (Прясно мляко)' },
   { code: '041196910759', name: 'Chobani Greek Yogurt Plain Non-Fat' },
   { code: '030000010204', name: 'Quaker Rolled Oats' },
   { code: '025293600270', name: 'Silk Unsweetened Almond Milk' },
@@ -20,11 +22,16 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({ isOpen
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [manualCode, setManualCode] = useState('');
+  const [isLookingUp, setIsLookingUp] = useState(false);
+  const [notFoundBarcode, setNotFoundBarcode] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isOpen) return;
 
     let activeStream: MediaStream | null = null;
+    setNotFoundBarcode(null);
+    setIsLookingUp(false);
+
     async function startCamera() {
       try {
         setCameraError(null);
@@ -45,7 +52,7 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({ isOpen
           });
 
           const interval = setInterval(async () => {
-            if (videoRef.current && videoRef.current.readyState === 4) {
+            if (videoRef.current && videoRef.current.readyState === 4 && !isLookingUp) {
               try {
                 const barcodes = await barcodeDetector.detect(videoRef.current);
                 if (barcodes.length > 0) {
@@ -80,19 +87,33 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({ isOpen
       stream.getTracks().forEach(track => track.stop());
       setStream(null);
     }
+    setNotFoundBarcode(null);
+    setIsLookingUp(false);
     onClose();
   };
 
-  const handleBarcodeFound = (code: string) => {
-    const match = DEMO_BARCODES.find(b => b.code === code);
-    const query = match ? match.name : `UPC ${code}`;
-    handleClose();
-    onDetected(query);
+  const handleBarcodeFound = async (code: string) => {
+    const cleanCode = code.trim().replace(/[^0-9]/g, '');
+    if (!cleanCode) return;
+
+    setIsLookingUp(true);
+    setNotFoundBarcode(null);
+
+    const product = await lookupBarcodeProduct(cleanCode);
+    setIsLookingUp(false);
+
+    if (product) {
+      handleClose();
+      onDetected(product.name, product);
+    } else {
+      // Product was NOT found in the database
+      setNotFoundBarcode(cleanCode);
+    }
   };
 
   const handleManualSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!manualCode.trim()) return;
+    if (!manualCode.trim() || isLookingUp) return;
     handleBarcodeFound(manualCode.trim());
   };
 
@@ -117,7 +138,12 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({ isOpen
 
         {/* Camera Viewfinder */}
         <div className="my-4 relative bg-zinc-950 rounded-xl overflow-hidden aspect-video border border-zinc-800 flex items-center justify-center">
-          {cameraError ? (
+          {isLookingUp ? (
+            <div className="p-4 text-center text-xs text-teal-400 flex flex-col items-center gap-2">
+              <Loader2 className="w-7 h-7 animate-spin text-teal-400" />
+              <span>Looking up product in food database...</span>
+            </div>
+          ) : cameraError ? (
             <div className="p-4 text-center text-xs text-zinc-400 flex flex-col items-center gap-2">
               <AlertCircle className="w-6 h-6 text-zinc-500" />
               <span>{cameraError}</span>
@@ -137,6 +163,19 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({ isOpen
           )}
         </div>
 
+        {/* Not Found Error Alert */}
+        {notFoundBarcode && (
+          <div className="mb-3 p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl text-left space-y-1 animate-in fade-in">
+            <div className="flex items-center gap-1.5 text-amber-400 text-xs font-bold">
+              <AlertCircle className="w-4 h-4 shrink-0" />
+              <span>Product not found. You can type the food instead.</span>
+            </div>
+            <p className="text-[11px] text-zinc-400 font-mono">
+              Barcode: <span className="text-zinc-200">{notFoundBarcode}</span>
+            </p>
+          </div>
+        )}
+
         {/* Manual Barcode Input */}
         <form onSubmit={handleManualSubmit} className="space-y-3">
           <div className="relative">
@@ -144,16 +183,26 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({ isOpen
             <input
               type="text"
               value={manualCode}
-              onChange={(e) => setManualCode(e.target.value)}
+              onChange={(e) => {
+                setManualCode(e.target.value);
+                if (notFoundBarcode) setNotFoundBarcode(null);
+              }}
               placeholder="Or enter barcode numbers..."
-              className="w-full bg-zinc-950 border border-zinc-800 rounded-xl pl-9 pr-12 py-2 text-xs text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-teal-500"
+              className="w-full bg-zinc-950 border border-zinc-800 rounded-xl pl-9 pr-16 py-2 text-xs text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-teal-500"
             />
             <button
               type="submit"
-              className="absolute right-1.5 top-1.5 px-2.5 py-1 bg-teal-500 hover:bg-teal-400 text-zinc-950 font-semibold text-xs rounded-lg flex items-center gap-1 transition-colors"
+              disabled={isLookingUp || !manualCode.trim()}
+              className="absolute right-1.5 top-1.5 px-2.5 py-1 bg-teal-500 hover:bg-teal-400 disabled:opacity-40 text-zinc-950 font-semibold text-xs rounded-lg flex items-center gap-1 transition-colors"
             >
-              Scan
-              <ArrowRight className="w-3 h-3" />
+              {isLookingUp ? (
+                <Loader2 className="w-3 h-3 animate-spin" />
+              ) : (
+                <>
+                  <span>Scan</span>
+                  <ArrowRight className="w-3 h-3" />
+                </>
+              )}
             </button>
           </div>
         </form>
@@ -167,8 +216,9 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({ isOpen
             {DEMO_BARCODES.map((item) => (
               <button
                 key={item.code}
+                disabled={isLookingUp}
                 onClick={() => handleBarcodeFound(item.code)}
-                className="w-full text-left p-2 rounded-lg bg-zinc-950/60 hover:bg-zinc-800/80 border border-zinc-800 text-[11px] text-zinc-300 flex items-center justify-between transition-colors"
+                className="w-full text-left p-2 rounded-lg bg-zinc-950/60 hover:bg-zinc-800/80 border border-zinc-800 text-[11px] text-zinc-300 flex items-center justify-between transition-colors disabled:opacity-40"
               >
                 <span className="truncate pr-2">{item.name}</span>
                 <span className="font-mono text-[10px] text-teal-400 shrink-0">{item.code}</span>

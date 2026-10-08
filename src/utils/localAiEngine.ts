@@ -80,6 +80,7 @@ export interface DecipheredFoodResult {
   whatToTakeOut: string[];
   isRecipe?: boolean;
   recipeServings?: number;
+  totalRecipeGrams?: number;
 }
 
 interface ExercisePattern {
@@ -707,8 +708,36 @@ const LOCAL_FOOD_DB: LocalFoodEntry[] = [
     category: 'dairy'
   },
   {
-    name: 'Milk',
-    keywords: ['milk', 'whole milk', 'cow milk', 'semi skimmed milk', 'low fat milk', 'skim milk'],
+    name: 'Milk (3% fat)',
+    keywords: ['3% milk', '3% fat milk', 'milk 3%', 'milk, 3%', '3 percent milk', 'milk (3% fat)', 'milk (3%)', 'cow milk 3%'],
+    caloriesPer100g: 64,
+    proteinPer100g: 3.3,
+    carbsPer100g: 4.8,
+    fatPer100g: 3.0,
+    fiberPer100g: 0,
+    sugarPer100g: 4.8,
+    sodiumMgPer100g: 44,
+    defaultGrams: 220,
+    defaultUnitLabel: '1 glass (220ml)',
+    category: 'dairy'
+  },
+  {
+    name: 'Milk (2% fat)',
+    keywords: ['2% milk', '2% fat milk', 'reduced fat milk', 'milk 2%', '2 percent milk', 'milk (2% fat)', 'milk (2%)'],
+    caloriesPer100g: 50,
+    proteinPer100g: 3.3,
+    carbsPer100g: 4.8,
+    fatPer100g: 2.0,
+    fiberPer100g: 0,
+    sugarPer100g: 4.8,
+    sodiumMgPer100g: 44,
+    defaultGrams: 220,
+    defaultUnitLabel: '1 glass (220ml)',
+    category: 'dairy'
+  },
+  {
+    name: 'Milk (1% fat)',
+    keywords: ['1% milk', '1% fat milk', 'low fat milk', 'milk 1%', '1 percent milk', 'semi skimmed milk', 'semi-skimmed milk'],
     caloriesPer100g: 42,
     proteinPer100g: 3.4,
     carbsPer100g: 5.0,
@@ -716,8 +745,36 @@ const LOCAL_FOOD_DB: LocalFoodEntry[] = [
     fiberPer100g: 0,
     sugarPer100g: 5.0,
     sodiumMgPer100g: 44,
-    defaultGrams: 200,
-    defaultUnitLabel: '200g (estimated)',
+    defaultGrams: 220,
+    defaultUnitLabel: '1 glass (220ml)',
+    category: 'dairy'
+  },
+  {
+    name: 'Skim Milk',
+    keywords: ['skim milk', 'skimmed milk', 'nonfat milk', '0% milk', 'fat free milk'],
+    caloriesPer100g: 35,
+    proteinPer100g: 3.4,
+    carbsPer100g: 5.0,
+    fatPer100g: 0.1,
+    fiberPer100g: 0,
+    sugarPer100g: 5.0,
+    sodiumMgPer100g: 44,
+    defaultGrams: 220,
+    defaultUnitLabel: '1 glass (220ml)',
+    category: 'dairy'
+  },
+  {
+    name: 'Whole Milk',
+    keywords: ['milk', 'whole milk', 'cow milk', 'regular milk', 'fresh milk', 'full cream milk'],
+    caloriesPer100g: 64,
+    proteinPer100g: 3.3,
+    carbsPer100g: 4.8,
+    fatPer100g: 3.3,
+    fiberPer100g: 0,
+    sugarPer100g: 4.8,
+    sodiumMgPer100g: 44,
+    defaultGrams: 220,
+    defaultUnitLabel: '1 glass (220ml)',
     category: 'dairy'
   },
   {
@@ -1047,6 +1104,48 @@ const LOCAL_FOOD_DB: LocalFoodEntry[] = [
     defaultGrams: 50,
     defaultUnitLabel: '50g (estimated)',
     category: 'grain'
+  },
+  {
+    name: 'Flour',
+    keywords: ['flour', 'all purpose flour', 'all-purpose flour', 'white flour', 'wheat flour', 'plain flour', 'baking flour'],
+    caloriesPer100g: 364,
+    proteinPer100g: 10.3,
+    carbsPer100g: 76.3,
+    fatPer100g: 1.0,
+    fiberPer100g: 2.7,
+    sugarPer100g: 0.3,
+    sodiumMgPer100g: 2,
+    defaultGrams: 120,
+    defaultUnitLabel: '1 cup (120g)',
+    category: 'grain'
+  },
+  {
+    name: 'Rice (raw)',
+    keywords: ['raw rice', 'uncooked rice', 'dry rice'],
+    caloriesPer100g: 365,
+    proteinPer100g: 7.1,
+    carbsPer100g: 80.0,
+    fatPer100g: 0.7,
+    fiberPer100g: 1.3,
+    sugarPer100g: 0.1,
+    sodiumMgPer100g: 5,
+    defaultGrams: 185,
+    defaultUnitLabel: '1 cup (185g)',
+    category: 'grain'
+  },
+  {
+    name: 'Water',
+    keywords: ['water', 'tap water', 'mineral water', 'spring water'],
+    caloriesPer100g: 0,
+    proteinPer100g: 0,
+    carbsPer100g: 0,
+    fatPer100g: 0,
+    fiberPer100g: 0,
+    sugarPer100g: 0,
+    sodiumMgPer100g: 5,
+    defaultGrams: 240,
+    defaultUnitLabel: '1 glass (240ml)',
+    category: 'beverage'
   },
   {
     name: 'Cooked Rice',
@@ -1456,14 +1555,15 @@ function estimateBeverageCaffeineAndAlcohol(
     caffeineMgPer100g = 1.0; // trace caffeine in decaf (~2-3mg per cup)
   }
 
-  const isAlcoholKeyword = /\b(beer|lager|ale|ipa|stout|pilsner|wine|red wine|white wine|rosé|rose wine|prosecco|champagne|sparkling wine|pinot|cabernet|chardonnay|sauvignon|merlot|whiskey|whisky|bourbon|scotch|vodka|gin|rum|tequila|brandy|cognac|liquor|spirits|cider|hard cider|hard seltzer|cocktail|margarita|mojito|martini|spritz|aperol)\b/i.test(
+  const isDairyOrMilk = /\b(milk|dairy|yogurt|cream|cheese|butter)\b/i.test(combined);
+  const isAlcoholKeyword = !isDairyOrMilk && /\b(beer|lager|ale|ipa|stout|pilsner|wine|red wine|white wine|rosé|rose wine|prosecco|champagne|sparkling wine|pinot|cabernet|chardonnay|sauvignon|merlot|whiskey|whisky|bourbon|scotch|vodka|gin|rum|tequila|brandy|cognac|liquor|spirits|cider|hard cider|hard seltzer|cocktail|margarita|mojito|martini|spritz|aperol)\b/i.test(
     combined
   );
-  const isNonAlcoholic = /\b(non[-\s]?alcoholic|alcohol[-\s]?free|0\.0%|zero alcohol|ginger beer|root beer|apple cider vinegar)\b/i.test(
+  const isNonAlcoholic = isDairyOrMilk || /\b(non[-\s]?alcoholic|alcohol[-\s]?free|0\.0%|zero alcohol|ginger beer|root beer|apple cider vinegar)\b/i.test(
     combined
   );
 
-  let abvPercent: number | undefined = explicitAbvPercent;
+  let abvPercent: number | undefined = isDairyOrMilk ? undefined : explicitAbvPercent;
   if (abvPercent === undefined && isAlcoholKeyword && !isNonAlcoholic) {
     if (/\b(whiskey|whisky|bourbon|scotch|vodka|gin|rum|tequila|brandy|cognac|liquor|spirits)\b/i.test(combined)) {
       abvPercent = 40;
@@ -1623,7 +1723,8 @@ function findBestFoodMatch(foodPhrase: string): LocalFoodEntry | null {
   for (const entry of LOCAL_FOOD_DB) {
     for (const kw of entry.keywords) {
       const escaped = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      const wordRegex = new RegExp(`\\b${escaped}\\b`, 'i');
+      // Use boundary assertion that works with '%' characters
+      const wordRegex = new RegExp(`(?<![a-zA-Z0-9])${escaped}(?![a-zA-Z0-9])`, 'i');
       if (wordRegex.test(cleaned) && kw.length > longestKwLen) {
         bestEntry = entry;
         longestKwLen = kw.length;
@@ -1635,14 +1736,40 @@ function findBestFoodMatch(foodPhrase: string): LocalFoodEntry | null {
   return null;
 }
 
+export function getCupWeightGrams(foodPhrase: string): number {
+  const lower = foodPhrase.toLowerCase();
+  if (/\b(?:flour|all[- ]?purpose flour|wheat flour|plain flour|baking flour|cake flour)\b/i.test(lower)) return 120;
+  if (/\b(?:sugar|white sugar|brown sugar|cane sugar|powdered sugar|granulated sugar)\b/i.test(lower)) return 200;
+  if (/\b(?:milk|water|buttermilk|cream|broth|stock)\b/i.test(lower)) return 240;
+  if (/\b(?:rice|uncooked rice|raw rice|basmati|jasmine)\b/i.test(lower)) return 185;
+  if (/\b(?:oats|rolled oats|quick oats|oatmeal|raw oats|dry oats)\b/i.test(lower)) return 90;
+  if (/\b(?:butter|margarine|ghee)\b/i.test(lower)) return 227;
+  if (/\b(?:oil|olive oil|vegetable oil|canola oil|coconut oil|sunflower oil)\b/i.test(lower)) return 218;
+  if (/\b(?:honey|maple syrup|syrup|molasses)\b/i.test(lower)) return 340;
+  return 240;
+}
+
 function parseFoodSegment(segmentRaw: string): DecipheredFoodItem | null {
   const raw = segmentRaw.trim();
   if (!raw) return null;
 
+  // Never treat pure barcode tokens like "upc", "upc 123456", "barcode" as food
+  if (/^(?:upc|ean|barcode)(?:\s*[:#]?\s*\d+)?$/i.test(raw)) {
+    return null;
+  }
+
   const lower = raw.toLowerCase();
 
-  // Extract optional explicit ABV percentage (e.g. "12.5% ABV", "5% alc", "13.5%")
-  const abvMatch = raw.match(/(\d+(?:[.,]\d+)?)\s*%\s*(?:abv|alc(?:ohol)?(?:\s*by\s*vol(?:ume)?)?)?/i);
+  // Extract explicit ABV percentage ONLY if followed by abv, alc, alcohol, by volume OR on known alcohol drink
+  // NEVER treat fat percentages (e.g. 3% milk, 2% milk, 10% fat) as alcohol ABV!
+  const isAlcoholPhrase = /\b(beer|lager|ale|ipa|stout|pilsner|wine|whiskey|whisky|bourbon|scotch|vodka|gin|rum|tequila|brandy|cognac|liquor|spirits|cider|hard cider|cocktail|margarita|mojito|martini|spritz|aperol)\b/i.test(raw);
+  const isDairyOrFatPhrase = /\b(milk|dairy|yogurt|cheese|cream|butter|fat|mf|milkfat|beef|pork|meat)\b/i.test(raw);
+
+  const abvMatch = !isDairyOrFatPhrase
+    ? (raw.match(/\b(\d+(?:[.,]\d+)?)\s*%\s*(?:abv|alc(?:ohol)?(?:\s*by\s*vol(?:ume)?)?)\b/i) ||
+       (isAlcoholPhrase ? raw.match(/\b(\d+(?:[.,]\d+)?)\s*%/i) : null))
+    : null;
+
   const explicitAbvPercent = abvMatch
     ? parseFloat(abvMatch[1].replace(',', '.'))
     : undefined;
@@ -1721,7 +1848,17 @@ function parseFoodSegment(segmentRaw: string): DecipheredFoodItem | null {
   let hasUserExplicitWeight = false;
 
   const parseQtyToken = (rawQty: string): number => {
-    const q = (rawQty || '1').toLowerCase().trim();
+    let q = (rawQty || '1').toLowerCase().trim();
+    if (q === '½' || q === 'half') return 0.5;
+    if (q === '¼' || q === 'quarter') return 0.25;
+    if (q === '¾') return 0.75;
+    if (q === '⅓') return 1 / 3;
+    if (q === '⅔') return 2 / 3;
+    if (q.includes('½')) q = q.replace('½', '.5');
+    if (q.includes('¼')) q = q.replace('¼', '.25');
+    if (q.includes('¾')) q = q.replace('¾', '.75');
+    if (q.includes('⅓')) q = q.replace('⅓', '.333');
+    if (q.includes('⅔')) q = q.replace('⅔', '.667');
     if (q.includes('/')) {
       const [n, d] = q.split('/');
       return parseFloat(n) / (parseFloat(d) || 1);
@@ -1731,27 +1868,27 @@ function parseFoodSegment(segmentRaw: string): DecipheredFoodItem | null {
 
   // Special case: vessel + food + explicit volume, e.g. "1 glass of beer 150ml", "2 cans of beer 330ml"
   const vesselPlusVolumeMatch = rawWithoutAbv.match(
-    /^(?:(a|an|one|two|three|four|five|six|seven|eight|nine|ten|\d+(?:[.,/]\d+)?)\s+)?(glass|glasses|cup|cups|mug|mugs|can|cans|bottle|bottles|pint|pints|shot|shots)\s+(?:of\s+)?(.+?)[,\s\-–(]+(\d+(?:[.,]\d+)?)\s*(ml|milliliters?|l|liters?|oz|ounces?|g|grams?)\)?$/i
+    /^(?:(a|an|one|two|three|four|five|six|seven|eight|nine|ten|\d+(?:[.,/]\d+)?)\s+)?(glass|glasses|cup|cups|mug|mugs|can|cans|bottle|bottles|pint|pints|shot|shots)\s+(?:of\s+)?(.+?)[,\s\-–(]+(\d+(?:[.,]\d+)?)\s*(ml|milliliters?|l|liters?|oz|ounces?|lbs?|pounds?|g|grams?)\)?$/i
   );
 
-  // 1. Check quantity + unit at START: e.g. "60g dried prunes", "200ml milk", "2 slices bread", "2 cups regular coffee", "1 glass of wine"
+  // 1. Check quantity + unit at START: e.g. "60g dried prunes", "200ml milk", "2 slices bread", "2 cups flour", "1 glass of wine"
   const leadingUnitMatch = !vesselPlusVolumeMatch
     ? rawWithoutAbv.match(
-        /^(?:(a|an|one|two|three|four|five|six|seven|eight|nine|ten|twelve|fifteen|twenty|half|quarter|\d+(?:[.,/]\d+)?)\s*)?(g|grams?|kg|kilograms?|ml|milliliters?|l|liters?|oz|ounces?|cups?|mug|mugs|glass|glasses|pint|pints|shot|shots|can|cans|bottle|bottles|tbsp|tablespoons?|tsp|teaspoons?|slices?)\b\s*(?:of\s+)?(.+)$/i
+        /^(?:(a|an|one|two|three|four|five|six|seven|eight|nine|ten|twelve|fifteen|twenty|half|quarter|\d+(?:[.,/]\d+)?)\s*)?(g|grams?|kg|kilograms?|ml|milliliters?|l|liters?|oz|ounces?|lbs?|pounds?|cups?|mug|mugs|glass|glasses|pint|pints|shot|shots|can|cans|bottle|bottles|tbsp|tablespoons?|tsp|teaspoons?|slices?)\b\s*(?:of\s+)?(.+)$/i
       )
     : null;
 
   // 2. Check quantity + unit at END or in parens: e.g. "oatmeal 150g", "milk 200g", "milk (200ml)", "oatmeal - 150g"
   const trailingUnitMatch = !vesselPlusVolumeMatch && !leadingUnitMatch
     ? rawWithoutAbv.match(
-        /^(.+?)[,\s\-–(]+(a|an|one|two|three|four|five|six|seven|eight|nine|ten|twelve|fifteen|twenty|half|quarter|\d+(?:[.,/]\d+)?)\s*(g|grams?|kg|kilograms?|ml|milliliters?|l|liters?|oz|ounces?|cups?|mug|mugs|glass|glasses|pint|pints|shot|shots|can|cans|bottle|bottles|tbsp|tablespoons?|tsp|teaspoons?|slices?)\)?$/i
+        /^(.+?)[,\s\-–(]+(a|an|one|two|three|four|five|six|seven|eight|nine|ten|twelve|fifteen|twenty|half|quarter|\d+(?:[.,/]\d+)?)\s*(g|grams?|kg|kilograms?|ml|milliliters?|l|liters?|oz|ounces?|lbs?|pounds?|cups?|mug|mugs|glass|glasses|pint|pints|shot|shots|can|cans|bottle|bottles|tbsp|tablespoons?|tsp|teaspoons?|slices?)\)?$/i
       )
     : null;
 
   // 3. Check quantity + unit in MIDDLE: e.g. "oatmeal 150g cooked"
   const middleUnitMatch = !vesselPlusVolumeMatch && !leadingUnitMatch && !trailingUnitMatch
     ? rawWithoutAbv.match(
-        /^(.+?)\s+(\d+(?:[.,]\d+)?)\s*(g|grams?|kg|kilograms?|ml|milliliters?|l|liters?|oz|ounces?|cups?|tbsp|tablespoons?|tsp|teaspoons?)\b\s+(.+)$/i
+        /^(.+?)\s+(\d+(?:[.,]\d+)?)\s*(g|grams?|kg|kilograms?|ml|milliliters?|l|liters?|oz|ounces?|lbs?|pounds?|cups?|tbsp|tablespoons?|tsp|teaspoons?)\b\s+(.+)$/i
       )
     : null;
 
@@ -1803,10 +1940,28 @@ function parseFoodSegment(segmentRaw: string): DecipheredFoodItem | null {
 
   const matched = findBestFoodMatch(foodPhrase);
   const baseDisplayName = formatTypedFoodName(foodPhrase);
-  const displayName =
+  let displayName =
     explicitAbvPercent !== undefined
       ? `${baseDisplayName} (${explicitAbvPercent}% ABV)`
-      : baseDisplayName;
+      : (matched && (/\b(milk|dairy|fat)\b/i.test(matched.name) || matched.name.includes('%'))
+          ? matched.name
+          : baseDisplayName);
+
+  // If user typed 3% milk, ensure label is "Milk (3% fat)" not ABV
+  if (/\b3\s*%\s*milk\b/i.test(raw) || /\bmilk\s*3\s*%/i.test(raw) || /\bmilk\s*,\s*3\s*%/i.test(raw) || /\b3\s*%\s*fat\b/i.test(raw)) {
+    displayName = 'Milk (3% fat)';
+  } else if (/\b2\s*%\s*milk\b/i.test(raw) || /\bmilk\s*2\s*%/i.test(raw) || /\bmilk\s*,\s*2\s*%/i.test(raw) || /\b2\s*%\s*fat\b/i.test(raw)) {
+    displayName = 'Milk (2% fat)';
+  } else if (/\b1\s*%\s*milk\b/i.test(raw) || /\bmilk\s*1\s*%/i.test(raw) || /\bmilk\s*,\s*1\s*%/i.test(raw) || /\b1\s*%\s*fat\b/i.test(raw)) {
+    displayName = 'Milk (1% fat)';
+  } else if (/\b(?:whole\s*milk|full\s*cream\s*milk)\b/i.test(raw)) {
+    displayName = 'Whole Milk';
+  }
+
+  // Never return an item called "Upc" or "Barcode"
+  if (/^(?:upc|barcode)\b/i.test(displayName.trim())) {
+    return null;
+  }
 
   const isLiquidOrBeverage =
     matched?.category === 'beverage' ||
@@ -1832,13 +1987,16 @@ function parseFoodSegment(segmentRaw: string): DecipheredFoodItem | null {
   } else if (unit === 'l' || unit === 'liter' || unit === 'liters') {
     grams = amount * 1000;
     servingLabel = `${amount}L (${grams}ml)`;
+  } else if (unit === 'lb' || unit === 'lbs' || unit === 'pound' || unit === 'pounds') {
+    grams = Math.round(amount * 453.6 * 10) / 10;
+    servingLabel = `${amount} lb${amount !== 1 ? 's' : ''} (${grams}g)`;
   } else if (unit === 'oz' || unit === 'ounce' || unit === 'ounces') {
-    grams = Math.round(amount * (isLiquidOrBeverage ? 29.57 : 28.35));
+    grams = Math.round(amount * (isLiquidOrBeverage ? 29.57 : 28.35) * 10) / 10;
     servingLabel = `${amount} oz (${grams}${isLiquidOrBeverage ? 'ml' : 'g'})`;
   } else if (unit === 'cup' || unit === 'cups' || unit === 'mug' || unit === 'mugs') {
-    const perCupGrams = isLiquidOrBeverage ? 240 : 180;
-    grams = Math.round(amount * perCupGrams);
-    servingLabel = `${amount} ${unit.replace(/s$/, '')}${amount !== 1 ? 's' : ''} (${grams}${isLiquidOrBeverage ? 'ml' : 'g'})`;
+    const perCupGrams = getCupWeightGrams(foodPhrase);
+    grams = Math.round(amount * perCupGrams * 10) / 10;
+    servingLabel = `${amount} ${unit.replace(/s$/, '')}${amount !== 1 ? 's' : ''} (${grams}g)`;
   } else if (unit === 'glass' || unit === 'glasses') {
     const isWine = /\b(wine|prosecco|champagne|pinot|cabernet|chardonnay|sauvignon|merlot|rosé|rose)\b/i.test(foodPhrase);
     const perGlassMl = isWine ? 150 : 250;
@@ -1857,10 +2015,10 @@ function parseFoodSegment(segmentRaw: string): DecipheredFoodItem | null {
     grams = Math.round(amount * perVesselMl);
     servingLabel = `${amount} ${unit.replace(/s$/, '')}${amount !== 1 ? 's' : ''} (${grams}ml)`;
   } else if (unit === 'tbsp' || unit === 'tablespoon' || unit === 'tablespoons') {
-    grams = Math.round(amount * 15);
+    grams = Math.round(amount * 15 * 10) / 10;
     servingLabel = `${amount} tbsp (${grams}g)`;
   } else if (unit === 'tsp' || unit === 'teaspoon' || unit === 'teaspoons') {
-    grams = Math.round(amount * 5);
+    grams = Math.round(amount * 5 * 10) / 10;
     servingLabel = `${amount} tsp (${grams}g)`;
   } else {
     // Count or bare item: check the known per-item weight table OR real-food database defaultGrams
@@ -2478,7 +2636,18 @@ export function recalculateDecipheredFoodWithGrams(
       standardDrinks
     };
   });
-  return buildDecipheredFoodSummary(updatedItems, dailyCalorieGoal, mealType);
+  const summary = buildDecipheredFoodSummary(updatedItems, dailyCalorieGoal, mealType);
+  summary.isRecipe = baseResult.isRecipe;
+  summary.recipeServings = baseResult.recipeServings;
+  if (baseResult.isRecipe && baseResult.mealSummaryName) {
+    summary.mealSummaryName = baseResult.mealSummaryName;
+  }
+  let totalRecipeGrams = 0;
+  for (const it of updatedItems) {
+    totalRecipeGrams += it.grams;
+  }
+  summary.totalRecipeGrams = Math.round(totalRecipeGrams * 10) / 10;
+  return summary;
 }
 
 export function decipherFoodText(
@@ -2514,7 +2683,10 @@ export function decipherFoodText(
     detectedRecipeServings = parseInt(servesMatch[1], 10);
   }
 
-  const parts = ingredientsString
+  // Avoid splitting items like "milk, 3%" or "yogurt, 2%" on the comma
+  const sanitizedIngredients = ingredientsString.replace(/,\s*(?=\d+\s*%)/g, ' ');
+
+  const parts = sanitizedIngredients
     .split(/(?:[,;\n+]+|\b(?:and|with|plus|topped with|alongside)\b)/i)
     .map(s => s.trim())
     .filter(Boolean);
@@ -2527,9 +2699,18 @@ export function decipherFoodText(
 
   const result = buildDecipheredFoodSummary(items, dailyCalorieGoal, mealType);
 
+  let totalRecipeGrams = 0;
+  for (const it of items) {
+    totalRecipeGrams += it.grams;
+  }
+  result.totalRecipeGrams = Math.round(totalRecipeGrams * 10) / 10;
+
+  const hasRecipeUnits = /\b(cups?|tablespoons?|tbsp|teaspoons?|tsp|pounds?|lbs?|ounces?|oz)\b/i.test(normalizedInput);
+  const hasRecipeKeywords = /\b(flour|sugar|baking|dough|butter|oil|vanilla|salt|powder|egg|eggs)\b/i.test(normalizedInput);
   const isRecipe = Boolean(recipeColonMatch) || 
                    Boolean(detectedRecipeServings) || 
                    /\b(?:recipe|carbonara|for\s+\d+|serves\s+\d+|makes\s+\d+)\b/i.test(normalizedInput) ||
+                   (items.length >= 2 && (hasRecipeUnits || hasRecipeKeywords)) ||
                    (items.length >= 3 && normalizedInput.toLowerCase().includes('people'));
 
   result.isRecipe = isRecipe;
@@ -2540,6 +2721,8 @@ export function decipherFoodText(
         .split(' ')
         .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
         .join(' ');
+    } else {
+      result.mealSummaryName = 'Recipe';
     }
   }
 

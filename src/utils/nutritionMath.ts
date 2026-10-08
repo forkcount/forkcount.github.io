@@ -65,11 +65,16 @@ export function calculateMaintenanceCalories(profile: UserProfile): number {
 }
 
 export function calculateDailyCalorieTarget(profile: UserProfile): number {
+  // If the user has manually set or overridden their daily calorie target, use that value directly
+  if (profile.targetCalories && profile.targetCalories > 0) {
+    return Math.round(profile.targetCalories);
+  }
+
   if (!hasCompleteProfileStats(profile)) {
     return 0;
   }
 
-  const { gender, dailyActivity, goalSpeed } = profile;
+  const { dailyActivity } = profile;
   const bmr = computeRawBmr(profile);
 
   const activityMultipliers: Record<string, number> = {
@@ -87,31 +92,34 @@ export function calculateDailyCalorieTarget(profile: UserProfile): number {
 
   const speedAdjustments: Record<string, number> = {
     lose_slow: -250,
+    slow: -250,
     lose_normal: -500,
-    lose_fast: -750,
-    lose_aggressive: -1000,
+    lose_medium: -500,
+    medium: -500,
+    normal: -500,
     lose: -500,
+    lose_fast: -750,
+    fast: -750,
+    lose_aggressive: -1000,
+    aggressive: -1000,
     maintain: 0,
     gain_slow: 250,
     gain_normal: 500,
     gain: 500,
+    gain_fast: 750,
     recomp: 0
   };
 
-  const selectedKey = profile.goalSpeed || profile.goal || 'maintain';
+  const selectedKey = (profile.goalSpeed || profile.goal || 'maintain').toLowerCase();
   if (!(selectedKey in speedAdjustments)) {
     return Math.round(tdee);
   }
 
-  let target = tdee + speedAdjustments[selectedKey];
+  // Ensure slow, medium, fast produce distinct targets by applying exact deficit from maintenance
+  const adjustment = speedAdjustments[selectedKey] ?? 0;
+  const target = Math.max(600, Math.round(tdee + adjustment));
 
-  // Floor at 1200 for women, 1500 for men, 1350 (average) for other/prefer_not_to_say
-  const floor = gender === 'male' ? 1500 : gender === 'female' ? 1200 : 1350;
-  if (target < floor) {
-    target = floor;
-  }
-
-  return Math.round(target);
+  return target;
 }
 
 /**

@@ -362,7 +362,10 @@ const MainAppContent: React.FC<MainAppContentProps> = ({
         <Suspense fallback={null}>
           <AddFoodModal
             isOpen={isAddFoodOpen}
-            onClose={closeAddFood}
+            onClose={() => {
+              setCurrentTab('diary');
+              closeAddFood();
+            }}
             defaultMeal={selectedMealForAdd || lastSelectedMeal || 'breakfast'}
           />
         </Suspense>

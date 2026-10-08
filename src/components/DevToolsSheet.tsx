@@ -664,7 +664,7 @@ export const DevToolsSheet: React.FC<DevToolsSheetProps> = ({
                 return (
                   <div className="space-y-3">
                     <div className="overflow-x-auto rounded-xl border border-zinc-800 bg-zinc-950">
-                      <table className="w-full text-left border-collapse min-w-[500px]">
+                      <table className="w-full text-left border-collapse min-w-[550px]">
                         <thead>
                           <tr className="border-b border-zinc-800 text-[10px] uppercase font-bold text-zinc-400 tracking-wider">
                             <th className="py-2.5 px-3">Username</th>
@@ -672,13 +672,14 @@ export const DevToolsSheet: React.FC<DevToolsSheetProps> = ({
                             <th className="py-2.5 px-3">isDev</th>
                             <th className="py-2.5 px-3">Created</th>
                             <th className="py-2.5 px-3">Last Login</th>
-                            <th className="py-2.5 px-3 text-right">Action</th>
+                            <th className="py-2.5 px-2 text-center">Inspect</th>
+                            <th className="py-2.5 px-2 text-center">Delete</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-zinc-800/60 text-xs">
                           {paginated.length === 0 ? (
                             <tr>
-                              <td colSpan={6} className="py-6 text-center text-[11px] text-zinc-500">
+                              <td colSpan={7} className="py-6 text-center text-[11px] text-zinc-500">
                                 No user accounts match your search.
                               </td>
                             </tr>
@@ -708,27 +709,27 @@ export const DevToolsSheet: React.FC<DevToolsSheetProps> = ({
                                 <td className="py-2 px-3 text-[10px] text-zinc-400">
                                   {formatSafeTimestamp(u.updatedAt || u.createdAt)}
                                 </td>
-                                <td className="py-2 px-3 text-right">
-                                  <div className="flex items-center justify-end gap-1.5">
-                                    <button
-                                      type="button"
-                                      onClick={() => handleQuickInspect(u.username)}
-                                      className="px-2 py-1 bg-teal-500/10 hover:bg-teal-500 hover:text-zinc-950 border border-teal-500/20 text-teal-400 rounded-lg text-[10px] font-bold transition-all"
-                                    >
-                                      Inspect
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => handleDeleteUserClick(u)}
-                                      className={`px-2 py-1 rounded-lg text-[10px] font-bold transition-all ${
-                                        confirmDeleteId === u.id
-                                          ? 'bg-rose-500/20 border border-rose-500 text-rose-400 hover:bg-rose-500 hover:text-white'
-                                          : 'bg-zinc-800/40 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-zinc-300'
-                                      }`}
-                                    >
-                                      {confirmDeleteId === u.id ? 'Confirm?' : 'Delete'}
-                                    </button>
-                                  </div>
+                                <td className="py-2 px-2 text-center">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleQuickInspect(u.username)}
+                                    className="px-2 py-1 bg-teal-500/10 hover:bg-teal-500 hover:text-zinc-950 border border-teal-500/20 text-teal-400 rounded-lg text-[10px] font-bold transition-all"
+                                  >
+                                    Inspect
+                                  </button>
+                                </td>
+                                <td className="py-2 px-2 text-center">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteUserClick(u)}
+                                    className={`px-2 py-1 rounded-lg text-[10px] font-bold transition-all ${
+                                      confirmDeleteId === u.id
+                                        ? 'bg-rose-500/20 border border-rose-500 text-rose-400 hover:bg-rose-500 hover:text-white'
+                                        : 'bg-zinc-850 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-zinc-300'
+                                    }`}
+                                  >
+                                    {confirmDeleteId === u.id ? 'Confirm?' : 'Delete'}
+                                  </button>
                                 </td>
                               </tr>
                             ))

@@ -21,6 +21,7 @@ import {
 import { useApp } from '../context/AppContext.js';
 import { api } from '../services/api.js';
 import { BarcodeScannerModal } from './BarcodeScannerModal.js';
+import { lookupBarcodeProduct, BarcodeProduct } from '../services/barcodeService.js';
 import {
   decipherFoodText,
   recalculateDecipheredFoodWithGrams,
@@ -71,7 +72,10 @@ export const AddFoodModal: React.FC<AddFoodModalProps> = ({ isOpen, onClose, def
   const [editingWeightIndex, setEditingWeightIndex] = useState<number | null>(null);
   const [userServingsEaten, setUserServingsEaten] = useState<string>('1');
   const [isSaving, setIsSaving] = useState(false);
+  const [isSubmitted, setIsSubmitted] = useState(false);
+  const [recipeServingsOverride, setRecipeServingsOverride] = useState<number | null>(null);
   const [saveSuccessMsg, setSaveSuccessMsg] = useState<string | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
 
   // Speech Recognition State
   const [isListening, setIsListening] = useState(false);
@@ -206,56 +210,266 @@ export const AddFoodModal: React.FC<AddFoodModalProps> = ({ isOpen, onClose, def
     );
   }, [parsedResult, gramOverrides, macroTarget, mealType]);
 
-  // Parse Servings amount helper
-  const parseServings = (val: string): number => {
-    if (val === '½') return 0.5;
-    if (val === '¼') return 0.25;
-    if (val === '¾') return 0.75;
-    const num = parseFloat(val);
-    return Number.isNaN(num) || num <= 0 ? 1.0 : num;
+  // Helper to calculate recipe scaling from servings, fractions, or free-text gram weights
+  const calculateRecipeScale = (
+    inputVal: string,
+    totalGrams: number,
+    totalCalories: number,
+    defaultServings: number = 4
+  ) => {
+    const v = (inputVal || '1').trim();
+    const lower = v.toLowerCase();
+
+    // Fraction check
+    if (lower === '½' || lower === '1/2' || lower === '0.5') {
+      const scale = 0.5;
+      return {
+        scale,
+        label: '½ of recipe',
+        eatenGrams: Math.round(totalGrams * scale),
+        eatenCalories: Math.round(totalCalories * scale)
+      };
+    }
+    if (lower === '¼' || lower === '1/4' || lower === '0.25') {
+      const scale = 0.25;
+      return {
+        scale,
+        label: '¼ of recipe',
+        eatenGrams: Math.round(totalGrams * scale),
+        eatenCalories: Math.round(totalCalories * scale)
+      };
+    }
+    if (lower === '⅓' || lower === '1/3') {
+      const scale = 1 / 3;
+      return {
+        scale,
+        label: '⅓ of recipe',
+        eatenGrams: Math.round(totalGrams * scale),
+        eatenCalories: Math.round(totalCalories * scale)
+      };
+    }
+    if (lower === '¾' || lower === '3/4' || lower === '0.75') {
+      const scale = 0.75;
+      return {
+        scale,
+        label: '¾ of recipe',
+        eatenGrams: Math.round(totalGrams * scale),
+        eatenCalories: Math.round(totalCalories * scale)
+      };
+    }
+    if (lower === 'all' || lower === 'whole' || lower === '100%') {
+      return {
+        scale: 1.0,
+        label: 'Entire recipe',
+        eatenGrams: totalGrams,
+        eatenCalories: totalCalories
+      };
+    }
+
+    // Free-text grams check: e.g. "120g", "120 grams", "100 g", or free-text number greater than defaultServings
+    const gramMatch = lower.match(/^(\d+(?:[.,]\d+)?)\s*(?:g|grams?)?$/i);
+    const num = parseFloat(v.replace(',', '.'));
+    if (gramMatch && !Number.isNaN(num) && (num > defaultServings || lower.includes('g'))) {
+      const safeG = Math.max(1, num);
+      const scale = totalGrams > 0 ? safeG / totalGrams : 1.0;
+      return {
+        scale,
+        label: `${Math.round(safeG)}g portion`,
+        eatenGrams: Math.round(safeG),
+        eatenCalories: Math.round(totalCalories * scale)
+      };
+    }
+
+    // Servings number input
+    if (!Number.isNaN(num) && num > 0) {
+      const scale = num / defaultServings;
+      return {
+        scale,
+        label: `${num} of ${defaultServings} servings`,
+        eatenGrams: Math.round(totalGrams * scale),
+        eatenCalories: Math.round(totalCalories * scale)
+      };
+    }
+
+    const scale = 1 / defaultServings;
+    return {
+      scale,
+      label: `1 of ${defaultServings} servings`,
+      eatenGrams: Math.round(totalGrams * scale),
+      eatenCalories: Math.round(totalCalories * scale)
+    };
   };
 
-  // The single Log action
-  const handleLogInput = (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
+  useEffect(() => {
+    if (isOpen) {
+      setIsSubmitted(false);
+      setIsSaving(false);
+      setFormError(null);
+    }
+  }, [isOpen]);
+
+  // Real-time input parsing: automatically deciphers foods and recipes as user types or pastes
+  useEffect(() => {
     const trimmed = inputText.trim();
-    if (!trimmed) return;
+    if (!trimmed) {
+      setParsedResult(null);
+      setGramOverrides({});
+      setFormError(null);
+      return;
+    }
+
+    // Check if input looks like a barcode number (e.g. 3800748051053 or UPC 3800748051053)
+    const barcodeMatch = trimmed.match(/^(?:upc|ean|barcode)?\s*[:#]?\s*(\d{8,14})$/i);
+    if (barcodeMatch) {
+      const cleanCode = barcodeMatch[1];
+      const timer = setTimeout(async () => {
+        const prod = await lookupBarcodeProduct(cleanCode);
+        if (prod) {
+          const item: DecipheredFoodItem = {
+            rawText: prod.name,
+            name: prod.name,
+            grams: prod.servingGrams,
+            needsWeightConfirmation: false,
+            servingLabel: prod.servingLabel,
+            calories: prod.totalCalories,
+            protein: prod.totalProtein,
+            carbs: prod.totalCarbs,
+            fat: prod.totalFat,
+            fiber: prod.fiberPer100g ? Math.round(prod.fiberPer100g * (prod.servingGrams / 100) * 10) / 10 : 0,
+            sugar: prod.sugarPer100g ? Math.round(prod.sugarPer100g * (prod.servingGrams / 100) * 10) / 10 : 0,
+            sodiumMg: prod.sodiumMgPer100g ? Math.round(prod.sodiumMgPer100g * (prod.servingGrams / 100)) : 0,
+            caffeineMg: 0,
+            standardDrinks: 0,
+            caloriesPer100g: prod.caloriesPer100g,
+            proteinPer100g: prod.proteinPer100g,
+            carbsPer100g: prod.carbsPer100g,
+            fatPer100g: prod.fatPer100g,
+            fiberPer100g: prod.fiberPer100g,
+            sugarPer100g: prod.sugarPer100g,
+            sodiumMgPer100g: prod.sodiumMgPer100g,
+            category: 'packaged' as any
+          };
+          setParsedResult({
+            mealSummaryName: prod.name,
+            items: [item],
+            needsWeightConfirmation: false,
+            hasItemOver5kg: false,
+            isOver5000Kcal: false,
+            isExtremeCalorieMeal: false,
+            usedFallbackReference: false,
+            referenceDailyGoal: macroTarget?.calories || 2000,
+            totalCalories: prod.totalCalories,
+            totalProtein: prod.totalProtein,
+            totalCarbs: prod.totalCarbs,
+            totalFat: prod.totalFat,
+            totalFiber: item.fiber,
+            totalSugar: item.sugar,
+            totalSodiumMg: item.sodiumMg,
+            totalCaffeineMg: 0,
+            totalStandardDrinks: 0,
+            healthRating: 8,
+            healthLabel: 'Scanned Item',
+            whatToAdd: [],
+            whatToTakeOut: [],
+            isRecipe: false
+          });
+          setGramOverrides({});
+          setFormError(null);
+        } else {
+          setParsedResult(null);
+          setFormError(`Product not found. You can type the food instead. (Barcode: ${cleanCode})`);
+        }
+      }, 300);
+      return () => clearTimeout(timer);
+    }
+
+    const timer = setTimeout(() => {
+      const parsed = decipherFoodText(trimmed, macroTarget?.calories || 2000, mealType);
+      setParsedResult(parsed);
+      setGramOverrides({});
+      setFormError(null);
+    }, 250);
+
+    return () => clearTimeout(timer);
+  }, [inputText, macroTarget, mealType]);
+
+  // Check if form has valid food items with nutrition data
+  const hasValidItems = useMemo(() => {
+    if (activeResult && activeResult.items.length > 0) {
+      const cal = activeResult.items.reduce((s, i) => s + (i.calories || 0), 0);
+      const p = activeResult.items.reduce((s, i) => s + (i.protein || 0), 0);
+      const c = activeResult.items.reduce((s, i) => s + (i.carbs || 0), 0);
+      const f = activeResult.items.reduce((s, i) => s + (i.fat || 0), 0);
+      return cal > 0 || p > 0 || c > 0 || f > 0;
+    }
+    return false;
+  }, [activeResult]);
+
+  // Unified Log action: reads parsed item(s), saves to Firestore diary, resets form, and navigates back to Diary
+  const handleLogAndSave = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (isSaving) return;
 
     if (isGuest && !consumeGuestAiCall()) {
       openGuestLock();
       return;
     }
 
-    const parsed = decipherFoodText(trimmed, macroTarget?.calories || 2000, mealType);
-    setParsedResult(parsed);
-    setGramOverrides({});
-    setEditingWeightIndex(null);
-    setUserServingsEaten('1');
-  };
+    // Determine current items to log
+    let targetResult = activeResult;
+    if (!targetResult || targetResult.items.length === 0) {
+      const trimmed = inputText.trim();
+      if (!trimmed) {
+        setFormError('Add a food first.');
+        return;
+      }
+      targetResult = decipherFoodText(trimmed, macroTarget?.calories || 2000, mealType);
+      setParsedResult(targetResult);
+    }
 
-  // Save Food action
-  const handleSaveToDiary = async () => {
-    if (!activeResult || activeResult.items.length === 0 || isSaving) return;
+    if (!targetResult || targetResult.items.length === 0) {
+      setFormError('Add a food first.');
+      return;
+    }
+
+    // Never log 0 calories as a real item: check for valid nutrition data
+    const allTotalCal = targetResult.items.reduce((s, i) => s + (i.calories || 0), 0);
+    const allTotalP = targetResult.items.reduce((s, i) => s + (i.protein || 0), 0);
+    const allTotalC = targetResult.items.reduce((s, i) => s + (i.carbs || 0), 0);
+    const allTotalF = targetResult.items.reduce((s, i) => s + (i.fat || 0), 0);
+    if (allTotalCal <= 0 && allTotalP <= 0 && allTotalC <= 0 && allTotalF <= 0) {
+      setFormError('Add a food first.');
+      return;
+    }
 
     setIsSaving(true);
+    setFormError(null);
+
     try {
-      const isRecipe = Boolean(activeResult.isRecipe);
-      const servingsCount = activeResult.recipeServings || 4;
-      const eatenServings = parseServings(userServingsEaten);
-      const recipeScale = isRecipe ? eatenServings / servingsCount : 1.0;
+      const isRecipe = Boolean(targetResult.isRecipe);
+      const totalRecipeGrams = targetResult.totalRecipeGrams || targetResult.items.reduce((s, i) => s + (i.grams || 0), 0);
+      const servingsCount = recipeServingsOverride || targetResult.recipeServings || 4;
 
       if (isRecipe) {
-        // Log recipe with divided numbers
-        const totalCals = Math.round(activeResult.totalCalories * recipeScale);
-        const totalP = Math.round(activeResult.totalProtein * recipeScale * 10) / 10;
-        const totalC = Math.round(activeResult.totalCarbs * recipeScale * 10) / 10;
-        const totalF = Math.round(activeResult.totalFat * recipeScale * 10) / 10;
-        const totalFib = Math.round(activeResult.totalFiber * recipeScale * 10) / 10;
-        const totalSug = Math.round(activeResult.totalSugar * recipeScale * 10) / 10;
-        const totalSod = Math.round(activeResult.totalSodiumMg * recipeScale);
+        // Calculate portion scaling from fraction, grams, or servings
+        const portion = calculateRecipeScale(
+          userServingsEaten,
+          totalRecipeGrams,
+          targetResult.totalCalories,
+          servingsCount
+        );
+        const recipeScale = portion.scale;
+
+        const totalCals = Math.round(targetResult.totalCalories * recipeScale);
+        const totalP = Math.round(targetResult.totalProtein * recipeScale * 10) / 10;
+        const totalC = Math.round(targetResult.totalCarbs * recipeScale * 10) / 10;
+        const totalF = Math.round(targetResult.totalFat * recipeScale * 10) / 10;
+        const totalFib = Math.round(targetResult.totalFiber * recipeScale * 10) / 10;
+        const totalSug = Math.round(targetResult.totalSugar * recipeScale * 10) / 10;
+        const totalSod = Math.round(targetResult.totalSodiumMg * recipeScale);
 
         await addFoodItem({
-          name: `${activeResult.mealSummaryName} (${userServingsEaten} of ${servingsCount} servings)`,
+          name: `${targetResult.mealSummaryName || 'Recipe'} (${portion.label})`,
           calories: totalCals,
           protein: totalP,
           carbs: totalC,
@@ -263,14 +477,14 @@ export const AddFoodModal: React.FC<AddFoodModalProps> = ({ isOpen, onClose, def
           fiber: totalFib,
           sugar: totalSug,
           sodium: totalSod,
-          serving: `${userServingsEaten} serving`,
+          serving: `${portion.eatenGrams}g`,
           mealType,
           date: activeDate,
           source: 'recipe'
         });
-      } else if (activeResult.items.length === 1) {
+      } else if (targetResult.items.length === 1) {
         // Single food item
-        const item = activeResult.items[0];
+        const item = targetResult.items[0];
         await addFoodItem({
           name: item.name,
           calories: item.calories,
@@ -287,7 +501,7 @@ export const AddFoodModal: React.FC<AddFoodModalProps> = ({ isOpen, onClose, def
         });
       } else {
         // Multiple food items: log each item
-        for (const item of activeResult.items) {
+        for (const item of targetResult.items) {
           await addFoodItem({
             name: item.name,
             calories: item.calories,
@@ -305,13 +519,19 @@ export const AddFoodModal: React.FC<AddFoodModalProps> = ({ isOpen, onClose, def
         }
       }
 
-      setSaveSuccessMsg('Logged successfully!');
-      setTimeout(() => {
-        onClose();
-      }, 700);
-    } catch (err) {
-      console.error('Failed to save food:', err);
-    } finally {
+      // Do not re-render the Add Food screen after Log is tapped:
+      // Immediately set isSubmitted and trigger onClose to navigate back to Diary
+      setIsSubmitted(true);
+      onClose();
+
+      // Reset form in background
+      setInputText('');
+      setParsedResult(null);
+      setGramOverrides({});
+      setUserServingsEaten('1');
+    } catch (err: any) {
+      console.error('Failed to log food:', err);
+      setFormError(err?.message || 'Failed to save food.');
       setIsSaving(false);
     }
   };
@@ -394,7 +614,7 @@ export const AddFoodModal: React.FC<AddFoodModalProps> = ({ isOpen, onClose, def
     }
   };
 
-  if (!isOpen) return null;
+  if (!isOpen || isSubmitted) return null;
 
   return (
     <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4">
@@ -677,7 +897,7 @@ export const AddFoodModal: React.FC<AddFoodModalProps> = ({ isOpen, onClose, def
           ) : (
             /* SMART AI BOX (The Only Input) */
             <div className="space-y-4">
-              <form onSubmit={handleLogInput} className="space-y-2.5">
+              <form onSubmit={handleLogAndSave} className="space-y-2.5">
                 <div className="relative bg-zinc-950 border border-zinc-800 rounded-2xl p-3 focus-within:border-teal-500 transition-colors shadow-inner">
                   <div className="flex items-center justify-between mb-1.5">
                     <label className="text-[11px] font-semibold text-teal-400 flex items-center gap-1">
@@ -723,6 +943,7 @@ export const AddFoodModal: React.FC<AddFoodModalProps> = ({ isOpen, onClose, def
                           onClick={() => {
                             setInputText('');
                             setParsedResult(null);
+                            setFormError(null);
                           }}
                           className="p-1 rounded-md text-zinc-500 hover:text-zinc-300 transition-colors"
                           title="Clear input"
@@ -736,17 +957,27 @@ export const AddFoodModal: React.FC<AddFoodModalProps> = ({ isOpen, onClose, def
                   <textarea
                     rows={3}
                     value={inputText}
-                    onChange={(e) => setInputText(e.target.value)}
+                    onChange={(e) => {
+                      setInputText(e.target.value);
+                      if (formError) setFormError(null);
+                    }}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter' && !e.shiftKey) {
                         e.preventDefault();
-                        handleLogInput();
+                        handleLogAndSave();
                       }
                     }}
                     placeholder="Type or speak: 89g mango, 2 egs and tost, 1 pack Doritos, 1 can Coke Zero, or paste a recipe..."
                     className="w-full bg-transparent text-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none resize-none leading-relaxed"
                   />
                 </div>
+
+                {formError && (
+                  <div className="p-3 bg-rose-500/10 border border-rose-500/30 rounded-xl text-xs text-rose-300 flex items-center gap-2">
+                    <AlertTriangle className="w-4 h-4 shrink-0" />
+                    <span>{formError}</span>
+                  </div>
+                )}
 
                 {/* Actions: Scan Menu & Log Button */}
                 <div className="flex items-center gap-2">
@@ -762,11 +993,20 @@ export const AddFoodModal: React.FC<AddFoodModalProps> = ({ isOpen, onClose, def
 
                   <button
                     type="submit"
-                    disabled={!inputText.trim()}
+                    disabled={!hasValidItems || isSaving}
                     className="flex-1 py-2.5 bg-teal-500 hover:bg-teal-400 disabled:opacity-40 text-zinc-950 font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 transition-colors shadow-lg shadow-teal-500/20"
                   >
-                    <Sparkles className="w-4 h-4" />
-                    <span>Log</span>
+                    {isSaving ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <span>Logging...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="w-4 h-4" />
+                        <span>Log</span>
+                      </>
+                    )}
                   </button>
                 </div>
               </form>
@@ -940,76 +1180,94 @@ export const AddFoodModal: React.FC<AddFoodModalProps> = ({ isOpen, onClose, def
                   </div>
 
                   {/* Recipe Servings Input: "How much did you eat?" (For recipes only) */}
-                  {activeResult.isRecipe && (
-                    <div className="bg-zinc-900/90 border border-teal-500/30 rounded-xl p-3 space-y-2">
-                      <div className="flex items-center justify-between">
-                        <label className="text-xs font-bold text-zinc-200">
-                          Servings: How much did you eat?
-                        </label>
-                        <span className="text-[11px] font-mono text-teal-400 font-semibold">
-                          Total recipe: {activeResult.recipeServings || 4} servings
-                        </span>
-                      </div>
+                  {activeResult.isRecipe && (() => {
+                    const totalGrams = activeResult.totalRecipeGrams || activeResult.items.reduce((s, i) => s + (i.grams || 0), 0);
+                    const portion = calculateRecipeScale(userServingsEaten, totalGrams, activeResult.totalCalories, activeResult.recipeServings || 4);
 
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        {['1', '2', '3', '4', '½', '¼'].map((sVal) => (
-                          <button
-                            key={sVal}
-                            type="button"
-                            onClick={() => setUserServingsEaten(sVal)}
-                            className={`px-3 py-1 rounded-lg text-xs font-semibold font-mono transition-colors ${
-                              userServingsEaten === sVal
-                                ? 'bg-teal-500 text-zinc-950 font-bold'
-                                : 'bg-zinc-950 text-zinc-300 hover:bg-zinc-800 border border-zinc-800'
-                            }`}
-                          >
-                            {sVal}
-                          </button>
-                        ))}
+                    return (
+                      <div className="bg-zinc-900/90 border border-teal-500/30 rounded-xl p-3.5 space-y-2.5">
+                        <div className="flex items-center justify-between">
+                          <label className="text-xs font-bold text-zinc-100 flex items-center gap-1.5">
+                            <span>How much did you eat?</span>
+                          </label>
+                          <span className="text-[11px] font-mono text-teal-400 font-semibold">
+                            Total Recipe: {totalGrams}g ({activeResult.totalCalories} kcal)
+                          </span>
+                        </div>
 
-                        <div className="flex items-center gap-1 ml-auto">
-                          <input
-                            type="number"
-                            step="any"
-                            min="0.1"
-                            value={userServingsEaten}
-                            onChange={(e) => setUserServingsEaten(e.target.value)}
-                            placeholder="Custom"
-                            className="w-16 bg-zinc-950 border border-zinc-750 rounded-lg px-2 py-1 text-xs font-mono text-zinc-100 text-right focus:outline-none focus:border-teal-500"
-                          />
-                          <span className="text-[11px] text-zinc-400 font-mono">serving</span>
+                        {/* Servings count editor */}
+                        <div className="flex items-center justify-between py-1 px-2.5 bg-zinc-950 rounded-lg border border-zinc-850 text-xs">
+                          <span className="text-zinc-400">Recipe yields:</span>
+                          <div className="flex items-center gap-1.5 font-mono">
+                            <input
+                              type="number"
+                              min="1"
+                              max="100"
+                              value={recipeServingsOverride || activeResult.recipeServings || 4}
+                              onChange={(e) => {
+                                const val = Math.max(1, parseInt(e.target.value, 10) || 1);
+                                setRecipeServingsOverride(val);
+                              }}
+                              className="w-14 bg-zinc-900 border border-zinc-700 rounded px-1.5 py-0.5 text-center text-xs font-mono text-teal-300 focus:outline-none focus:border-teal-500"
+                            />
+                            <span className="text-zinc-500 text-[11px]">servings</span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          {['½', '¼', '⅓', '¾', 'All'].map((frac) => (
+                            <button
+                              key={frac}
+                              type="button"
+                              onClick={() => setUserServingsEaten(frac)}
+                              className={`px-3 py-1 rounded-lg text-xs font-semibold font-mono transition-colors ${
+                                userServingsEaten === frac
+                                  ? 'bg-teal-500 text-zinc-950 font-bold shadow-sm'
+                                  : 'bg-zinc-950 text-zinc-300 hover:bg-zinc-800 border border-zinc-800'
+                              }`}
+                            >
+                              {frac}
+                            </button>
+                          ))}
+
+                          <div className="flex items-center gap-1 ml-auto">
+                            <input
+                              type="text"
+                              value={userServingsEaten}
+                              onChange={(e) => setUserServingsEaten(e.target.value)}
+                              placeholder="e.g. 100g, ½, 1"
+                              className="w-24 bg-zinc-950 border border-zinc-750 rounded-lg px-2 py-1 text-xs font-mono text-zinc-100 text-right focus:outline-none focus:border-teal-500"
+                            />
+                            <span className="text-[11px] text-zinc-400 font-mono">portion</span>
+                          </div>
+                        </div>
+
+                        <div className="text-[11px] font-mono text-zinc-300 flex items-center justify-between pt-1 border-t border-zinc-850">
+                          <span className="text-zinc-400">Logging portion ({portion.label}):</span>
+                          <strong className="text-teal-300 text-xs">
+                            {portion.eatenCalories} kcal ({portion.eatenGrams}g)
+                          </strong>
                         </div>
                       </div>
+                    );
+                  })()}
 
-                      <div className="text-[11px] font-mono text-zinc-400 flex items-center justify-between pt-1 border-t border-zinc-850">
-                        <span>Logging portion:</span>
-                        <strong className="text-teal-300">
-                          {Math.round(
-                            (activeResult.totalCalories * parseServings(userServingsEaten)) /
-                              (activeResult.recipeServings || 4)
-                          )}{' '}
-                          kcal
-                        </strong>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Save Button at the Bottom */}
+                  {/* Save/Log Button at the Bottom */}
                   <button
                     type="button"
-                    disabled={isSaving}
-                    onClick={handleSaveToDiary}
+                    disabled={isSaving || !hasValidItems}
+                    onClick={handleLogAndSave}
                     className="w-full py-3 bg-teal-500 hover:bg-teal-400 disabled:opacity-50 text-zinc-950 font-bold rounded-xl text-xs flex items-center justify-center gap-2 transition-colors shadow-lg shadow-teal-500/20"
                   >
                     {isSaving ? (
                       <>
                         <Loader2 className="w-4 h-4 animate-spin" />
-                        <span>Saving to {mealType}...</span>
+                        <span>Logging to {mealType}...</span>
                       </>
                     ) : (
                       <>
                         <Check className="w-4 h-4" />
-                        <span>Save to {mealType}</span>
+                        <span>Log to {mealType}</span>
                       </>
                     )}
                   </button>
@@ -1024,12 +1282,65 @@ export const AddFoodModal: React.FC<AddFoodModalProps> = ({ isOpen, onClose, def
       <BarcodeScannerModal
         isOpen={isBarcodeOpen}
         onClose={() => setIsBarcodeOpen(false)}
-        onDetected={async (barcodeQuery) => {
+        onDetected={async (barcodeQuery, product) => {
           setIsBarcodeOpen(false);
-          setInputText(barcodeQuery);
-          const parsed = decipherFoodText(barcodeQuery, macroTarget?.calories || 2000, mealType);
-          setParsedResult(parsed);
-          setGramOverrides({});
+          setFormError(null);
+          if (product) {
+            setInputText(product.name);
+            const item: DecipheredFoodItem = {
+              rawText: product.name,
+              name: product.name,
+              grams: product.servingGrams,
+              needsWeightConfirmation: false,
+              servingLabel: product.servingLabel,
+              calories: product.totalCalories,
+              protein: product.totalProtein,
+              carbs: product.totalCarbs,
+              fat: product.totalFat,
+              fiber: product.fiberPer100g ? Math.round(product.fiberPer100g * (product.servingGrams / 100) * 10) / 10 : 0,
+              sugar: product.sugarPer100g ? Math.round(product.sugarPer100g * (product.servingGrams / 100) * 10) / 10 : 0,
+              sodiumMg: product.sodiumMgPer100g ? Math.round(product.sodiumMgPer100g * (product.servingGrams / 100)) : 0,
+              caffeineMg: 0,
+              standardDrinks: 0,
+              caloriesPer100g: product.caloriesPer100g,
+              proteinPer100g: product.proteinPer100g,
+              carbsPer100g: product.carbsPer100g,
+              fatPer100g: product.fatPer100g,
+              fiberPer100g: product.fiberPer100g,
+              sugarPer100g: product.sugarPer100g,
+              sodiumMgPer100g: product.sodiumMgPer100g,
+              category: 'packaged' as any
+            };
+            const result: DecipheredFoodResult = {
+              mealSummaryName: product.name,
+              items: [item],
+              needsWeightConfirmation: false,
+              hasItemOver5kg: false,
+              isOver5000Kcal: false,
+              isExtremeCalorieMeal: false,
+              usedFallbackReference: false,
+              referenceDailyGoal: macroTarget?.calories || 2000,
+              totalCalories: product.totalCalories,
+              totalProtein: product.totalProtein,
+              totalCarbs: product.totalCarbs,
+              totalFat: product.totalFat,
+              totalFiber: item.fiber,
+              totalSugar: item.sugar,
+              totalSodiumMg: item.sodiumMg,
+              totalCaffeineMg: 0,
+              totalStandardDrinks: 0,
+              healthRating: 8,
+              healthLabel: 'Scanned Item',
+              whatToAdd: [],
+              whatToTakeOut: [],
+              isRecipe: false
+            };
+            setParsedResult(result);
+            setGramOverrides({});
+          } else {
+            setParsedResult(null);
+            setFormError(`Product not found. You can type the food instead. (Barcode: ${barcodeQuery})`);
+          }
         }}
       />
     </div>

@@ -35,7 +35,8 @@ import {
   LogOut,
   Terminal,
   Flag,
-  RefreshCw
+  RefreshCw,
+  Pencil
 } from 'lucide-react';
 import { useApp } from '../context/AppContext.js';
 import { api } from '../services/api.js';
@@ -236,6 +237,11 @@ export const MeTab: React.FC<MeTabProps> = ({
   // "Why I started" pinned card state (#42)
   const [whyText, setWhyText] = useState(safeProfile.pinnedWhy || '');
   const [isEditingWhy, setIsEditingWhy] = useState(!safeProfile.pinnedWhy);
+
+  const [isEditingTarget, setIsEditingTarget] = useState(false);
+  const [customTargetInput, setCustomTargetInput] = useState('');
+  const [isSavingTarget, setIsSavingTarget] = useState(false);
+  const [targetSaveSuccess, setTargetSaveSuccess] = useState(false);
 
   // Non-scale victories (#41)
   const [newVictory, setNewVictory] = useState('');
@@ -875,6 +881,102 @@ export const MeTab: React.FC<MeTabProps> = ({
                 <span className="text-zinc-500 block text-[10px]">Protein (30%)</span>
                 <span className="font-bold text-red-400">{currentMacros.proteinGrams}g</span>
               </div>
+            </div>
+
+            {/* Daily Calorie Target Row with inline editor */}
+            <div className="bg-zinc-950 p-3.5 rounded-xl border border-zinc-800">
+              <div className="flex items-center justify-between gap-3">
+                <div
+                  onClick={() => {
+                    if (!isEditingTarget) {
+                      setCustomTargetInput(String(currentTargetKcal));
+                      setIsEditingTarget(true);
+                    }
+                  }}
+                  className="cursor-pointer flex-1"
+                >
+                  <span className="text-xs font-semibold text-zinc-300 block">Daily calorie target</span>
+                  <div className="flex items-baseline gap-1.5 mt-0.5">
+                    <span className="text-lg font-mono font-bold text-teal-400">
+                      {currentTargetKcal.toLocaleString()}
+                    </span>
+                    <span className="text-xs text-zinc-500 font-mono">kcal / day</span>
+                    {formData.targetCalories ? (
+                      <span className="ml-2 text-[10px] text-teal-400/80 bg-teal-500/10 px-1.5 py-0.5 rounded font-mono">
+                        Custom override
+                      </span>
+                    ) : (
+                      <span className="ml-2 text-[10px] text-zinc-500 bg-zinc-800/40 px-1.5 py-0.5 rounded font-mono">
+                        Formula target
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {!isEditingTarget ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCustomTargetInput(String(currentTargetKcal));
+                      setIsEditingTarget(true);
+                    }}
+                    className="p-2 rounded-xl bg-zinc-850 hover:bg-zinc-800 text-zinc-300 hover:text-teal-300 transition-colors flex items-center gap-1.5 text-xs font-semibold border border-zinc-750"
+                    title="Edit daily calorie target"
+                  >
+                    <Pencil className="w-3.5 h-3.5" />
+                    <span>Edit</span>
+                  </button>
+                ) : (
+                  <form
+                    onSubmit={async (e) => {
+                      e.preventDefault();
+                      const val = parseInt(customTargetInput, 10);
+                      if (isNaN(val) || val <= 0) return;
+                      setIsSavingTarget(true);
+                      try {
+                        await updateUserProfile({ targetCalories: val });
+                        setFormData((prev) => ({ ...prev, targetCalories: val }));
+                        setIsEditingTarget(false);
+                        setTargetSaveSuccess(true);
+                        setTimeout(() => setTargetSaveSuccess(false), 3000);
+                      } finally {
+                        setIsSavingTarget(false);
+                      }
+                    }}
+                    className="flex items-center gap-2"
+                  >
+                    <input
+                      type="number"
+                      min="500"
+                      max="10000"
+                      autoFocus
+                      value={customTargetInput}
+                      onChange={(e) => setCustomTargetInput(e.target.value)}
+                      placeholder="kcal"
+                      className="w-24 bg-zinc-900 border border-teal-500 rounded-xl px-2.5 py-1.5 text-xs font-mono text-zinc-100 text-right focus:outline-none"
+                    />
+                    <button
+                      type="submit"
+                      disabled={isSavingTarget || !customTargetInput}
+                      className="px-3 py-1.5 bg-teal-500 hover:bg-teal-400 disabled:opacity-50 text-zinc-950 font-bold text-xs rounded-xl transition-colors"
+                    >
+                      {isSavingTarget ? 'Saving...' : 'Save'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setIsEditingTarget(false)}
+                      className="px-2 py-1.5 text-zinc-400 hover:text-zinc-200 text-xs"
+                    >
+                      Cancel
+                    </button>
+                  </form>
+                )}
+              </div>
+              {targetSaveSuccess && (
+                <p className="text-[11px] text-teal-400 mt-2 font-mono flex items-center gap-1">
+                  <Check className="w-3 h-3" /> Daily target saved — Diary recalculated immediately.
+                </p>
+              )}
             </div>
 
             {projectedGoalDate && (
