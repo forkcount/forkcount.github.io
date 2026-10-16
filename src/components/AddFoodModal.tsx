@@ -519,6 +519,11 @@ export const AddFoodModal: React.FC<AddFoodModalProps> = ({ isOpen, onClose, def
         }
       }
 
+      // Cleanly blur input to close soft keyboard on mobile
+      if (typeof document !== 'undefined' && document.activeElement && 'blur' in document.activeElement) {
+        (document.activeElement as HTMLElement).blur();
+      }
+
       // Do not re-render the Add Food screen after Log is tapped:
       // Immediately set isSubmitted and trigger onClose to navigate back to Diary
       setIsSubmitted(true);
