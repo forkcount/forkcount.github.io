@@ -1,5 +1,22 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Mail, Lock, User, ArrowRight, ArrowLeft, X, Check, Eye, EyeOff, Search, Sparkles, Scale, Heart, Activity } from 'lucide-react';
+import {
+  Mail,
+  Lock,
+  User,
+  ArrowRight,
+  ArrowLeft,
+  X,
+  Check,
+  Eye,
+  EyeOff,
+  Search,
+  Sparkles,
+  Scale,
+  Heart,
+  Activity,
+  AlertCircle,
+  Shield
+} from 'lucide-react';
 import { api } from '../services/api.js';
 import { trackEvent } from '../utils/analytics.js';
 import { useApp } from '../context/AppContext.js';
@@ -25,7 +42,7 @@ interface AuthModalProps {
   onAuthComplete?: () => void;
 }
 
-type AuthFlowStage = 'credentials' | 'forgot_password' | 'step1_basic' | 'step2_body' | 'step3_lifestyle';
+type AuthFlowStage = 'credentials' | 'forgot_password' | 'step1_basic' | 'step2_body' | 'step3_lifestyle' | 'step4_targets';
 
 export const AuthModal: React.FC<AuthModalProps> = ({ onAuthComplete }) => {
   const {
@@ -147,6 +164,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onAuthComplete }) => {
   const [fitnessLevel, setFitnessLevel] = useState<'beginner' | 'intermediate' | 'advanced' | ''>('');
   const [dailyActivity, setDailyActivity] = useState<'sedentary' | 'light' | 'moderate' | 'active' | 'athlete' | ''>('');
   const [goal, setGoal] = useState<'lose' | 'maintain' | 'gain' | 'recomp' | ''>('');
+  const [hasMetabolicCondition, setHasMetabolicCondition] = useState(false);
 
   const countryDropdownRef = useRef<HTMLDivElement>(null);
 
@@ -221,6 +239,48 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onAuthComplete }) => {
   const isStep3Valid = useMemo(() => {
     return fitnessLevel !== '' && dailyActivity !== '' && goal !== '';
   }, [fitnessLevel, dailyActivity, goal]);
+
+  // Previews for Step 4
+  const previewProfile: UserProfile = useMemo(() => {
+    const ageNum = parseInt(age, 10) || 25;
+    const heightNum = parseFloat(heightCm) || 170;
+    const currentWeightNum = parseFloat(currentWeightKg) || 70;
+    const goalWeightNum = parseFloat(goalWeightKg) || 70;
+    const bodyFatNum = bodyFatPercent.trim() ? parseFloat(bodyFatPercent) : undefined;
+    let goalSpeed: 'lose_normal' | 'maintain' | 'gain_normal' | 'recomp' = 'maintain';
+    if (goal === 'lose') goalSpeed = 'lose_normal';
+    else if (goal === 'gain') goalSpeed = 'gain_normal';
+    else if (goal === 'recomp') goalSpeed = 'recomp';
+
+    return {
+      name: name.trim() || 'User',
+      username: username.trim() || 'user',
+      country: country.trim() || 'US',
+      age: ageNum,
+      gender: gender || 'prefer_not_to_say',
+      heightCm: heightNum,
+      currentWeightKg: currentWeightNum,
+      goalWeightKg: goalWeightNum,
+      bodyFatPercent: bodyFatNum,
+      fitnessLevel: fitnessLevel || 'beginner',
+      dailyActivity: dailyActivity || 'moderate',
+      goal: goal || 'maintain',
+      goalSpeed,
+      unitSystem: 'metric',
+      signupComplete: true,
+      hasMetabolicCondition,
+      lastCalculationWeightKg: currentWeightNum
+    };
+  }, [name, username, country, age, gender, heightCm, currentWeightKg, goalWeightKg, bodyFatPercent, fitnessLevel, dailyActivity, goal, hasMetabolicCondition]);
+
+  const previewBmr = useMemo(() => calculateBmr(previewProfile), [previewProfile]);
+  const previewTdee = useMemo(() => calculateMaintenanceCalories(previewProfile), [previewProfile]);
+  const previewTarget = useMemo(() => calculateDailyCalorieTarget(previewProfile), [previewProfile]);
+  const previewMacros = useMemo(() => {
+    const cw = parseFloat(currentWeightKg) || undefined;
+    const bf = bodyFatPercent.trim() ? parseFloat(bodyFatPercent) : undefined;
+    return calculateMacroTargets(previewTarget, goal, cw, bf);
+  }, [previewTarget, goal, currentWeightKg, bodyFatPercent]);
 
   // Handle Credentials Submit
   const handleCredentialsSubmit = async (e: React.FormEvent) => {
@@ -311,13 +371,15 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onAuthComplete }) => {
         goal,
         goalSpeed,
         unitSystem: 'metric',
-        signupComplete: true
+        signupComplete: true,
+        hasMetabolicCondition,
+        lastCalculationWeightKg: currentWeightNum
       };
 
       const bmr = calculateBmr(tempProfile);
       const tdee = calculateMaintenanceCalories(tempProfile);
       const targetCalories = calculateDailyCalorieTarget(tempProfile);
-      const macroTarget = calculateMacroTargets(targetCalories, goal);
+      const macroTarget = calculateMacroTargets(targetCalories, goal, currentWeightNum, bodyFatNum);
 
       const fullProfile: Partial<UserProfile> = {
         ...tempProfile,
@@ -377,8 +439,22 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onAuthComplete }) => {
             </h2>
             {flowStage.startsWith('step') && (
               <p className="text-xs text-teal-400 font-medium mt-1">
-                Step {flowStage === 'step1_basic' ? '1' : flowStage === 'step2_body' ? '2' : '3'} of 3:{' '}
-                {flowStage === 'step1_basic' ? 'Basic Info' : flowStage === 'step2_body' ? 'Body Stats' : 'Lifestyle & Goals'}
+                Step{' '}
+                {flowStage === 'step1_basic'
+                  ? '1'
+                  : flowStage === 'step2_body'
+                  ? '2'
+                  : flowStage === 'step3_lifestyle'
+                  ? '3'
+                  : '4'}{' '}
+                of 4:{' '}
+                {flowStage === 'step1_basic'
+                  ? 'Basic Info'
+                  : flowStage === 'step2_body'
+                  ? 'Body Stats'
+                  : flowStage === 'step3_lifestyle'
+                  ? 'Lifestyle & Goals'
+                  : 'Personalized Targets'}
               </p>
             )}
           </div>
@@ -397,7 +473,14 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onAuthComplete }) => {
             <div
               className="h-full bg-teal-500 transition-all duration-300"
               style={{
-                width: flowStage === 'step1_basic' ? '33%' : flowStage === 'step2_body' ? '66%' : '100%'
+                width:
+                  flowStage === 'step1_basic'
+                    ? '25%'
+                    : flowStage === 'step2_body'
+                    ? '50%'
+                    : flowStage === 'step3_lifestyle'
+                    ? '75%'
+                    : '100%'
               }}
             />
           </div>
@@ -838,6 +921,31 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onAuthComplete }) => {
                   ))}
                 </div>
               </div>
+              {/* Optional Medical Conditions Checkbox */}
+              <div className="pt-1">
+                <label className="flex items-start gap-3 p-3 rounded-xl border border-zinc-800 bg-zinc-800/40 hover:bg-zinc-800/70 cursor-pointer transition-all">
+                  <input
+                    type="checkbox"
+                    checked={hasMetabolicCondition}
+                    onChange={(e) => setHasMetabolicCondition(e.target.checked)}
+                    className="mt-0.5 rounded border-zinc-700 bg-zinc-900 text-teal-500 focus:ring-teal-400"
+                  />
+                  <div className="space-y-1">
+                    <span className="text-xs font-semibold text-zinc-200 block leading-snug">
+                      I have a medical condition that affects my metabolism (thyroid, PCOS, post-bariatric surgery, other).
+                    </span>
+                  </div>
+                </label>
+
+                {hasMetabolicCondition && (
+                  <div className="mt-2.5 p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl text-xs text-amber-200 flex items-start gap-2">
+                    <AlertCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                    <span className="leading-relaxed">
+                      Your calorie target is calculated from a standard formula. It may not fit if you have a metabolic condition. Talk to your doctor before following it.
+                    </span>
+                  </div>
+                )}
+              </div>
             </div>
 
             <div className="pt-3 border-t border-zinc-800 bg-zinc-900/95 shrink-0 flex items-center justify-between gap-3">
@@ -853,6 +961,94 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onAuthComplete }) => {
               <button
                 type="button"
                 disabled={!isStep3Valid || isLoading}
+                onClick={() => setFlowStage('step4_targets')}
+                className="flex-1 flex items-center justify-center gap-2 rounded-xl bg-teal-500 py-3 text-sm font-bold text-zinc-950 shadow-lg shadow-teal-500/25 hover:bg-teal-400 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+              >
+                <span>Review Targets</span>
+                <ArrowRight className="size-4" />
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* 5. Step 4: Personalized Targets Review */}
+        {flowStage === 'step4_targets' && (
+          <div className="mt-3 flex flex-col flex-1 min-h-0 overflow-hidden">
+            <div className="flex-1 overflow-y-auto pr-1.5 pb-6 space-y-4">
+              <div className="text-center pb-1">
+                <h3 className="text-base font-bold text-zinc-100">Your Calculated Metabolic Targets</h3>
+                <p className="text-xs text-zinc-400 mt-0.5">Calculated using Mifflin-St Jeor and your activity level</p>
+              </div>
+
+              {/* Main Daily Calorie Target Card */}
+              <div className="bg-zinc-950 p-4 rounded-2xl border border-teal-500/30 text-center space-y-1">
+                <span className="text-[11px] font-medium text-teal-400 uppercase tracking-wider block">Daily Calorie Target</span>
+                <div className="text-3xl font-extrabold font-mono text-zinc-100">
+                  {previewTarget.toLocaleString()} <span className="text-sm font-normal text-zinc-400 font-sans">kcal / day</span>
+                </div>
+              </div>
+
+              {/* BMR and Maintenance */}
+              <div className="grid grid-cols-2 gap-2 text-center text-xs font-mono">
+                <div className="bg-zinc-950 p-3 rounded-xl border border-zinc-800">
+                  <span className="text-zinc-500 block text-[10px]">BMR (At Rest)</span>
+                  <span className="font-bold text-zinc-200">{previewBmr} kcal</span>
+                </div>
+                <div className="bg-zinc-950 p-3 rounded-xl border border-zinc-800">
+                  <span className="text-zinc-500 block text-[10px]">Maintenance (TDEE)</span>
+                  <span className="font-bold text-zinc-200">{previewTdee} kcal</span>
+                </div>
+              </div>
+
+              {/* Macronutrient targets */}
+              <div className="bg-zinc-950 p-3 rounded-xl border border-zinc-800 space-y-2">
+                <div className="grid grid-cols-3 gap-2 text-center text-xs font-mono">
+                  <div>
+                    <span className="text-zinc-500 block text-[10px]">Carbs (40%)</span>
+                    <span className="font-bold text-blue-400">{previewMacros.carbsGrams}g</span>
+                  </div>
+                  <div>
+                    <span className="text-zinc-500 block text-[10px]">Fat (30%)</span>
+                    <span className="font-bold text-amber-400">{previewMacros.fatGrams}g</span>
+                  </div>
+                  <div>
+                    <span className="text-zinc-500 block text-[10px]">Protein (30%)</span>
+                    <span className="font-bold text-red-400">{previewMacros.proteinGrams}g</span>
+                  </div>
+                </div>
+
+                {previewMacros.proteinRaisedToFloor && (
+                  <div className="pt-2 border-t border-zinc-850 flex items-center gap-1.5 text-[11px] text-teal-300">
+                    <Shield className="w-3.5 h-3.5 text-teal-400 shrink-0" />
+                    <span>Protein target raised to protect muscle mass.</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Medical Condition Warning Note on Next Screen */}
+              {hasMetabolicCondition && (
+                <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl text-xs text-amber-200 flex items-start gap-2">
+                  <AlertCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                  <span className="leading-relaxed">
+                    Your calorie target is calculated from a standard formula. It may not fit if you have a metabolic condition. Talk to your doctor before following it.
+                  </span>
+                </div>
+              )}
+            </div>
+
+            <div className="pt-3 border-t border-zinc-800 bg-zinc-900/95 shrink-0 flex items-center justify-between gap-3">
+              <button
+                type="button"
+                onClick={() => setFlowStage('step3_lifestyle')}
+                className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl border border-zinc-700 text-xs font-semibold text-zinc-300 hover:bg-zinc-800"
+              >
+                <ArrowLeft className="size-4" />
+                <span>Back</span>
+              </button>
+
+              <button
+                type="button"
+                disabled={isLoading}
                 onClick={handleFinishOnboarding}
                 className="flex-1 flex items-center justify-center gap-2 rounded-xl bg-teal-500 py-3 text-sm font-bold text-zinc-950 shadow-lg shadow-teal-500/25 hover:bg-teal-400 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
               >
@@ -860,7 +1056,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onAuthComplete }) => {
                   <span>Saving profile...</span>
                 ) : (
                   <>
-                    <span>Calculate Targets &amp; Finish</span>
+                    <span>Start Tracking</span>
                     <Sparkles className="size-4" />
                   </>
                 )}

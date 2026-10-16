@@ -23,7 +23,8 @@ import {
   ChefHat,
   Wand2,
   RefreshCw,
-  Compass
+  Compass,
+  X
 } from 'lucide-react';
 import { useApp } from '../context/AppContext.js';
 import { api } from '../services/api.js';
@@ -103,6 +104,73 @@ export const DiaryTab: React.FC<DiaryTabProps> = ({ onNavigateToFitness }) => {
   } | null>(null);
 
   const [copyStatus, setCopyStatus] = useState<string | null>(null);
+
+  // #3 Hormone safety warning: Deficit greater than 500 kcal for 14+ consecutive days
+  const consecutiveDeficitDays = useMemo(() => {
+    const target = macroTarget?.calories || profile?.targetCalories || 0;
+    if (!target || target <= 500) return 0;
+
+    const caloriesByDate = new Map<string, number>();
+    for (const it of allDiaryItems) {
+      caloriesByDate.set(it.date, (caloriesByDate.get(it.date) || 0) + it.calories);
+    }
+
+    if (caloriesByDate.size === 0) return 0;
+
+    const sortedDates = Array.from(caloriesByDate.keys()).sort().reverse();
+    if (sortedDates.length === 0) return 0;
+
+    const candidateStarts = [sortedDates[0], todayStr, activeDate];
+    let maxStreak = 0;
+
+    for (const start of candidateStarts) {
+      let streak = 0;
+      let curr = new Date(start + 'T00:00:00');
+      while (true) {
+        const dStr = curr.toISOString().slice(0, 10);
+        if (caloriesByDate.has(dStr)) {
+          const eaten = caloriesByDate.get(dStr)!;
+          if (target - eaten > 500) {
+            streak++;
+            curr.setDate(curr.getDate() - 1);
+          } else {
+            break;
+          }
+        } else {
+          break;
+        }
+      }
+      if (streak > maxStreak) {
+        maxStreak = streak;
+      }
+    }
+
+    return maxStreak;
+  }, [allDiaryItems, macroTarget?.calories, profile?.targetCalories, todayStr, activeDate]);
+
+  const [deficitBannerDismissedStreak, setDeficitBannerDismissedStreak] = useState<number>(() => {
+    try {
+      return parseInt(localStorage.getItem('forkcount_deficit_dismissed_days') || '0', 10);
+    } catch {
+      return 0;
+    }
+  });
+
+  const showHormoneSafetyWarning = useMemo(() => {
+    if (consecutiveDeficitDays < 14) return false;
+    if (deficitBannerDismissedStreak === 0) return true;
+    // Reappears if the pattern continues another 7 days
+    return consecutiveDeficitDays >= deficitBannerDismissedStreak + 7;
+  }, [consecutiveDeficitDays, deficitBannerDismissedStreak]);
+
+  const handleDismissDeficitBanner = () => {
+    try {
+      localStorage.setItem('forkcount_deficit_dismissed_days', String(consecutiveDeficitDays));
+    } catch {
+      // ignore
+    }
+    setDeficitBannerDismissedStreak(consecutiveDeficitDays);
+  };
   // #13 Fix My Day AI suggestions state
   const [isFixingDay, setIsFixingDay] = useState(false);
   const [fixDayResult, setFixDayResult] = useState<{ summary: string; swaps: Array<{ originalFood: string; suggestedSwap: string; caloriesSaved: number; reason: string }> } | null>(null);
@@ -728,6 +796,26 @@ export const DiaryTab: React.FC<DiaryTabProps> = ({ onNavigateToFitness }) => {
 
   return (
     <div className="space-y-5 pb-8 max-w-md mx-auto">
+      {/* Hormone safety warning: Large deficit for 2 weeks banner */}
+      {showHormoneSafetyWarning && (
+        <div className="bg-amber-950/90 border border-amber-500/50 rounded-2xl p-4 flex items-start justify-between gap-3 shadow-lg animate-fadeIn">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+            <p className="text-xs text-amber-100 font-medium leading-relaxed">
+              You&apos;ve been in a large deficit for 2 weeks. This can slow your metabolism. Consider eating closer to your target for a few days.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={handleDismissDeficitBanner}
+            className="text-amber-400 hover:text-amber-200 p-1 rounded-lg hover:bg-amber-900/50 transition-colors shrink-0"
+            aria-label="Dismiss warning"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
       {/* #10 Daily total over 10,000 kcal warning banner */}
       {isDailyTotalUnusual(totalEaten) && (
         <button

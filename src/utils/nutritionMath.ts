@@ -64,12 +64,7 @@ export function calculateMaintenanceCalories(profile: UserProfile): number {
   return Math.round(bmr * multiplier);
 }
 
-export function calculateDailyCalorieTarget(profile: UserProfile): number {
-  // If the user has manually set or overridden their daily calorie target, use that value directly
-  if (profile.targetCalories && profile.targetCalories > 0) {
-    return Math.round(profile.targetCalories);
-  }
-
+export function calculateFormulaCalorieTarget(profile: UserProfile): number {
   if (!hasCompleteProfileStats(profile)) {
     return 0;
   }
@@ -122,13 +117,50 @@ export function calculateDailyCalorieTarget(profile: UserProfile): number {
   return target;
 }
 
+export function calculateDailyCalorieTarget(profile: UserProfile, ignoreManualTarget: boolean = false): number {
+  // If the user has manually set or overridden their daily calorie target, use that value directly unless forced
+  if (!ignoreManualTarget && profile.targetCalories && profile.targetCalories > 0) {
+    return Math.round(profile.targetCalories);
+  }
+
+  return calculateFormulaCalorieTarget(profile);
+}
+
+/**
+ * Calculates Lean Body Mass (LBM) in kg:
+ * - If body fat % is set: LBM = weight × (1 - bodyFatPercent/100)
+ * - If not: LBM = weight × 0.75 (rough estimate)
+ */
+export function calculateLeanBodyMass(weightKg: number, bodyFatPercent?: number | null): number {
+  if (!weightKg || weightKg <= 0) return 0;
+  if (bodyFatPercent && bodyFatPercent > 0 && bodyFatPercent < 100) {
+    return weightKg * (1 - bodyFatPercent / 100);
+  }
+  return weightKg * 0.75;
+}
+
+/**
+ * Minimum protein target = 1.6 g × LBM in kg.
+ * Below 1.6 g/kg of lean body mass, users lose muscle faster than fat.
+ */
+export function calculateProteinFloor(weightKg: number, bodyFatPercent?: number | null): number {
+  const lbm = calculateLeanBodyMass(weightKg, bodyFatPercent);
+  return Math.round(1.6 * lbm);
+}
+
 /**
  * Auto-calculate macros from the calorie goal:
  * Standard: 30% Protein, 30% Fat, 40% Carbs
  * Recomp: 35% Protein, 25% Fat, 40% Carbs
- * The three percentages must add to 100%. Grams × 4/4/9 must equal the target exactly.
+ * Enforces the Protein Floor: minimum 1.6 g per kg of lean body mass.
+ * If calculated protein is below this, raise it to the floor and reduce carbs to compensate.
  */
-export function calculateMacroTargets(targetCalories: number, goal?: string): MacroTarget {
+export function calculateMacroTargets(
+  targetCalories: number,
+  goal?: string,
+  weightKg?: number,
+  bodyFatPercent?: number | null
+): MacroTarget {
   const target = targetCalories;
   const isRecomp = goal === 'recomp';
   const proteinPct = isRecomp ? 35 : 30;
@@ -152,38 +184,41 @@ export function calculateMacroTargets(targetCalories: number, goal?: string): Ma
 
   let proteinGrams = Math.round(targetProteinKcal / 4);
   let fatGrams = Math.round(targetFatKcal / 9);
+  const calculatedProteinGrams = proteinGrams;
 
-  let remainingKcal = target - (proteinGrams * 4 + fatGrams * 9);
-  let carbsGrams = Math.round(remainingKcal / 4);
+  let minProteinGrams = undefined;
+  let proteinRaisedToFloor = false;
 
-  let currentTotal = proteinGrams * 4 + fatGrams * 9 + carbsGrams * 4;
-  let diff = target - currentTotal;
-
-  let attempts = 0;
-  while (diff !== 0 && attempts < 20) {
-    attempts++;
-    if (diff % 4 === 0) {
-      carbsGrams += diff / 4;
-      break;
-    } else {
-      if (diff > 0) {
-        fatGrams += 1;
-      } else {
-        fatGrams = Math.max(10, fatGrams - 1);
-      }
-      currentTotal = proteinGrams * 4 + fatGrams * 9 + carbsGrams * 4;
-      diff = target - currentTotal;
+  if (weightKg && weightKg > 0) {
+    minProteinGrams = calculateProteinFloor(weightKg, bodyFatPercent);
+    if (proteinGrams < minProteinGrams) {
+      proteinGrams = minProteinGrams;
+      proteinRaisedToFloor = true;
     }
   }
 
-  currentTotal = proteinGrams * 4 + fatGrams * 9 + carbsGrams * 4;
-  if (currentTotal !== target) {
-    carbsGrams = Math.max(0, Math.floor((target - (proteinGrams * 4 + fatGrams * 9)) / 4));
-    const remainder = target - (proteinGrams * 4 + fatGrams * 9 + carbsGrams * 4);
-    if (remainder > 0) {
-      proteinGrams += Math.floor(remainder / 4);
+  // Ensure protein + fat calories do not exceed target
+  while (proteinGrams * 4 + fatGrams * 9 > target && fatGrams > 5) {
+    fatGrams--;
+  }
+  while (proteinGrams * 4 + fatGrams * 9 > target && proteinGrams > 10) {
+    proteinGrams--;
+  }
+
+  // Align fat % 4 to target % 4
+  const targetMod = ((target % 4) + 4) % 4;
+  const fatMod = ((fatGrams % 4) + 4) % 4;
+  const diffMod = (targetMod - fatMod + 4) % 4;
+  if (diffMod > 0) {
+    if (fatGrams * 9 + diffMod * 9 <= target - proteinGrams * 4) {
+      fatGrams += diffMod;
+    } else if (fatGrams - (4 - diffMod) >= 0) {
+      fatGrams -= (4 - diffMod);
     }
   }
+
+  const remainingKcal = target - (proteinGrams * 4 + fatGrams * 9);
+  const carbsGrams = Math.max(0, Math.floor(remainingKcal / 4));
 
   return {
     calories: target,
@@ -192,7 +227,10 @@ export function calculateMacroTargets(targetCalories: number, goal?: string): Ma
     proteinGrams,
     carbsPct,
     fatPct,
-    proteinPct
+    proteinPct,
+    calculatedProteinGrams,
+    minProteinGrams,
+    proteinRaisedToFloor
   };
 }
 

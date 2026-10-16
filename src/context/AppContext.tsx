@@ -15,7 +15,14 @@ import type {
 import { signOut } from 'firebase/auth';
 import { auth } from '../firebase.js';
 import { api, getEmptyClientProfile } from '../services/api.js';
-import { calculateDailyCalorieTarget, calculateMacroTargets } from '../utils/nutritionMath.js';
+import {
+  calculateDailyCalorieTarget,
+  calculateFormulaCalorieTarget,
+  calculateMacroTargets,
+  calculateBmr,
+  calculateMaintenanceCalories,
+  hasCompleteProfileStats
+} from '../utils/nutritionMath.js';
 import { triggerHaptic } from '../utils/haptics.js';
 import { detectDefaultLanguage, SupportedLanguage, syncHtmlLangAttribute } from '../utils/i18n.js';
 import { getDateBounds } from '../utils/validation.js';
@@ -371,7 +378,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Compute targets
   const dailyCalories = calculateDailyCalorieTarget(profile);
-  const macroTarget = calculateMacroTargets(dailyCalories);
+  const macroTarget = calculateMacroTargets(
+    dailyCalories,
+    profile.goal,
+    profile.currentWeightKg,
+    profile.bodyFatPercent
+  );
 
   // Apply theme mode (dark / light / auto follows device setting)
   useEffect(() => {
@@ -798,7 +810,46 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
       return next;
     });
-    setProfile(prev => ({ ...prev, currentWeightKg: weightKg }));
+
+    // Adaptive BMR floor: Recalculate BMR, TDEE, and the target on new weight.
+    // If the new weight is 5 kg or more different from the last calculation weight,
+    // save new values to profile and update target.
+    const lastCalcWeight = profile.lastCalculationWeightKg ?? profile.currentWeightKg;
+    const weightDiff = Math.abs(weightKg - lastCalcWeight);
+    if (hasCompleteProfileStats(profile) && weightDiff >= 5) {
+      const updatedProfileStats: UserProfile = {
+        ...profile,
+        currentWeightKg: weightKg
+      };
+      const newBmr = calculateBmr(updatedProfileStats);
+      const newTdee = calculateMaintenanceCalories(updatedProfileStats);
+      const newTargetCalories = calculateFormulaCalorieTarget(updatedProfileStats);
+      const newMacroTarget = calculateMacroTargets(
+        newTargetCalories,
+        profile.goal,
+        weightKg,
+        profile.bodyFatPercent
+      );
+
+      const profileUpdates: Partial<UserProfile> = {
+        currentWeightKg: weightKg,
+        bmr: newBmr,
+        tdee: newTdee,
+        targetCalories: newTargetCalories,
+        macroTarget: newMacroTarget,
+        lastCalculationWeightKg: weightKg,
+        targetsUpdatedFromWeight: true
+      };
+      setProfile(prev => ({ ...prev, ...profileUpdates }));
+      try {
+        await api.updateProfile(profileUpdates);
+      } catch {
+        // sync handled by offline cache
+      }
+    } else {
+      setProfile(prev => ({ ...prev, currentWeightKg: weightKg }));
+    }
+
     loadGeneralData();
   };
 

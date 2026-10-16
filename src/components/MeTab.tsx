@@ -36,7 +36,9 @@ import {
   Terminal,
   Flag,
   RefreshCw,
-  Pencil
+  Pencil,
+  AlertCircle,
+  Info
 } from 'lucide-react';
 import { useApp } from '../context/AppContext.js';
 import { api } from '../services/api.js';
@@ -54,6 +56,7 @@ import {
   calculateDailyCalorieTarget,
   calculateMacroTargets,
   calculateProjectedGoalDetails,
+  calculateProteinFloor,
   formatWeight
 } from '../utils/nutritionMath.js';
 import {
@@ -264,6 +267,11 @@ export const MeTab: React.FC<MeTabProps> = ({
   const [customTargetInput, setCustomTargetInput] = useState('');
   const [isSavingTarget, setIsSavingTarget] = useState(false);
   const [targetSaveSuccess, setTargetSaveSuccess] = useState(false);
+  const [bmrWarningData, setBmrWarningData] = useState<{
+    enteredKcal: number;
+    bmrKcal: number;
+  } | null>(null);
+  const [showBmrExplainWhy, setShowBmrExplainWhy] = useState(false);
 
   // Non-scale victories (#41)
   const [newVictory, setNewVictory] = useState('');
@@ -334,7 +342,12 @@ export const MeTab: React.FC<MeTabProps> = ({
   const currentBmrKcal = calculateBmr(formData);
   const currentMaintenanceKcal = calculateMaintenanceCalories(formData);
   const currentTargetKcal = calculateDailyCalorieTarget(formData);
-  const currentMacros = calculateMacroTargets(currentTargetKcal);
+  const currentMacros = calculateMacroTargets(
+    currentTargetKcal,
+    formData.goal,
+    formData.currentWeightKg,
+    formData.bodyFatPercent
+  );
   const projectedGoalDetails = calculateProjectedGoalDetails(
     formData,
     weights,
@@ -876,6 +889,34 @@ export const MeTab: React.FC<MeTabProps> = ({
           </div>
         )}
 
+        {/* Adaptive BMR Floor: Targets updated based on new weight note */}
+        {profile.targetsUpdatedFromWeight && (
+          <div className="p-3 bg-teal-950/60 border border-teal-500/40 rounded-xl text-xs text-teal-300 flex items-center justify-between gap-2 shadow-sm">
+            <div className="flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-teal-400 shrink-0" />
+              <span className="font-medium">Targets updated based on your new weight.</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => updateUserProfile({ targetsUpdatedFromWeight: false })}
+              className="text-teal-400 hover:text-teal-200 text-xs px-2 py-0.5 rounded hover:bg-teal-900/40"
+              title="Dismiss"
+            >
+              ✕
+            </button>
+          </div>
+        )}
+
+        {/* Medical condition advisory note */}
+        {(formData.hasMetabolicCondition || profile.hasMetabolicCondition) && (
+          <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl text-xs text-amber-200 flex items-start gap-2">
+            <AlertCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+            <span className="leading-relaxed">
+              Your calorie target is calculated from a standard formula. It may not fit if you have a metabolic condition. Talk to your doctor before following it.
+            </span>
+          </div>
+        )}
+
         {/* Calculated BMR, Maintenance, Macros & Projected Goal Date (only shown when all required questions are answered) */}
         {isProfileComplete && currentTargetKcal > 0 && (
           <>
@@ -903,6 +944,31 @@ export const MeTab: React.FC<MeTabProps> = ({
                 <span className="text-zinc-500 block text-[10px]">Protein (30%)</span>
                 <span className="font-bold text-red-400">{currentMacros.proteinGrams}g</span>
               </div>
+            </div>
+
+            {/* Protein Floor & Muscle Protection */}
+            <div className="bg-zinc-950 p-3 rounded-xl border border-zinc-800 space-y-1.5 text-xs">
+              <div className="flex items-center justify-between text-zinc-300">
+                <span className="text-zinc-400">Calculated protein:</span>
+                <span className="font-mono font-medium text-zinc-200">
+                  {currentMacros.calculatedProteinGrams ?? currentMacros.proteinGrams}g
+                </span>
+              </div>
+              <div className="flex items-center justify-between text-zinc-300">
+                <span className="text-zinc-400">Minimum protein:</span>
+                <span className="font-mono font-bold text-teal-400">
+                  {currentMacros.minProteinGrams ?? calculateProteinFloor(formData.currentWeightKg, formData.bodyFatPercent)}g
+                </span>
+              </div>
+              {currentMacros.proteinRaisedToFloor && (
+                <div className="text-[11px] text-teal-300 font-medium flex items-center gap-1.5 pt-0.5">
+                  <Shield className="w-3.5 h-3.5 text-teal-400 shrink-0" />
+                  <span>Protein target raised to protect muscle mass.</span>
+                </div>
+              )}
+              <p className="text-[11px] text-zinc-500 pt-1 border-t border-zinc-800/80 leading-relaxed">
+                Below 1.6 g of protein per kg of lean body mass, users lose muscle faster than fat.
+              </p>
             </div>
 
             {/* Daily Calorie Target Row with inline editor */}
@@ -942,7 +1008,7 @@ export const MeTab: React.FC<MeTabProps> = ({
                       setCustomTargetInput(String(currentTargetKcal));
                       setIsEditingTarget(true);
                     }}
-                    className="p-2 rounded-xl bg-zinc-850 hover:bg-zinc-800 text-zinc-300 hover:text-teal-300 transition-colors flex items-center gap-1.5 text-xs font-semibold border border-zinc-750"
+                    className="p-2 rounded-xl bg-zinc-855 hover:bg-zinc-800 text-zinc-300 hover:text-teal-300 transition-colors flex items-center gap-1.5 text-xs font-semibold border border-zinc-750"
                     title="Edit daily calorie target"
                   >
                     <Pencil className="w-3.5 h-3.5" />
@@ -954,6 +1020,14 @@ export const MeTab: React.FC<MeTabProps> = ({
                       e.preventDefault();
                       const val = parseInt(customTargetInput, 10);
                       if (isNaN(val) || val <= 0) return;
+
+                      // Check BMR floor: don't just block, explain and offer 3 options
+                      if (currentBmrKcal > 0 && val < currentBmrKcal && !profile.bmrFloorOverridden) {
+                        setBmrWarningData({ enteredKcal: val, bmrKcal: currentBmrKcal });
+                        setShowBmrExplainWhy(false);
+                        return;
+                      }
+
                       setIsSavingTarget(true);
                       try {
                         await updateUserProfile({ targetCalories: val });
@@ -1000,6 +1074,106 @@ export const MeTab: React.FC<MeTabProps> = ({
                 </p>
               )}
             </div>
+
+            {/* BMR Floor Explanation Modal / Dialog */}
+            {bmrWarningData && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm animate-fadeIn">
+                <div className="w-full max-w-md rounded-2xl border border-amber-500/40 bg-zinc-900 p-5 shadow-2xl space-y-4">
+                  <div className="flex items-start gap-3">
+                    <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+                    <div className="space-y-1">
+                      <h3 className="text-sm font-bold text-zinc-100">Metabolic Floor Warning</h3>
+                      <p className="text-xs text-zinc-300 leading-relaxed">
+                        {bmrWarningData.enteredKcal.toLocaleString()} kcal is{' '}
+                        {Math.round((bmrWarningData.enteredKcal / bmrWarningData.bmrKcal) * 100)}% of your BMR (
+                        {bmrWarningData.bmrKcal.toLocaleString()} kcal). Eating below BMR for weeks can cost you muscle, not just fat.
+                      </p>
+                    </div>
+                  </div>
+
+                  {showBmrExplainWhy && (
+                    <div className="p-3 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-zinc-400 leading-relaxed space-y-1.5 animate-fadeIn">
+                      <p className="font-semibold text-zinc-200">Why does your body need BMR?</p>
+                      <p>
+                        Basal Metabolic Rate (BMR) is the minimum energy required to keep vital organs running at complete rest. Consistently eating below BMR slows metabolic adaptation and prompts the body to break down lean muscle tissue for fuel. Eating at or above BMR preserves lean muscle and sustains long-term metabolic health.
+                      </p>
+                    </div>
+                  )}
+
+                  <div className="space-y-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        const safeTarget = bmrWarningData.bmrKcal;
+                        setIsSavingTarget(true);
+                        try {
+                          await updateUserProfile({ targetCalories: safeTarget });
+                          setFormData((prev) => ({ ...prev, targetCalories: safeTarget }));
+                          setCustomTargetInput(String(safeTarget));
+                          setBmrWarningData(null);
+                          setIsEditingTarget(false);
+                          setTargetSaveSuccess(true);
+                          setTimeout(() => setTargetSaveSuccess(false), 3000);
+                        } finally {
+                          setIsSavingTarget(false);
+                        }
+                      }}
+                      className="w-full py-2.5 px-3 rounded-xl bg-teal-500 hover:bg-teal-400 text-zinc-950 text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-lg shadow-teal-500/20"
+                    >
+                      <Shield className="w-4 h-4" />
+                      <span>Use my safe target ({bmrWarningData.bmrKcal.toLocaleString()} kcal)</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setShowBmrExplainWhy((prev) => !prev)}
+                      className="w-full py-2 px-3 rounded-xl bg-zinc-800 hover:bg-zinc-750 text-zinc-200 text-xs font-medium border border-zinc-700 transition-all flex items-center justify-center gap-1.5"
+                    >
+                      <Info className="w-3.5 h-3.5 text-zinc-400" />
+                      <span>Explain why</span>
+                    </button>
+
+                    <div className="flex items-center justify-between pt-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setBmrWarningData(null);
+                          setShowBmrExplainWhy(false);
+                        }}
+                        className="text-xs text-zinc-400 hover:text-zinc-200 py-1 px-2"
+                      >
+                        Cancel
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          const overrideTarget = bmrWarningData.enteredKcal;
+                          setIsSavingTarget(true);
+                          try {
+                            await updateUserProfile({
+                              targetCalories: overrideTarget,
+                              bmrFloorOverridden: true,
+                              bmrFloorOverriddenAt: Date.now()
+                            });
+                            setFormData((prev) => ({ ...prev, targetCalories: overrideTarget, bmrFloorOverridden: true }));
+                            setBmrWarningData(null);
+                            setIsEditingTarget(false);
+                            setTargetSaveSuccess(true);
+                            setTimeout(() => setTargetSaveSuccess(false), 3000);
+                          } finally {
+                            setIsSavingTarget(false);
+                          }
+                        }}
+                        className="text-xs text-amber-400 hover:text-amber-300 font-semibold py-1 px-2 underline underline-offset-4"
+                      >
+                        Override anyway
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {projectedGoalDate && (
               <div className="bg-teal-950/40 border border-teal-900/60 rounded-xl p-3 space-y-1.5 text-xs text-teal-300">

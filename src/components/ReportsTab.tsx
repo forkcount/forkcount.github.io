@@ -19,12 +19,14 @@ import {
   RefreshCw,
   MessageSquare,
   Printer,
-  Pencil
+  Pencil,
+  Shield,
+  Info
 } from 'lucide-react';
 import { useApp } from '../context/AppContext.js';
 import { api } from '../services/api.js';
 import { trackEventOnce } from '../utils/analytics.js';
-import { formatWeight } from '../utils/nutritionMath.js';
+import { formatWeight, calculateBmr } from '../utils/nutritionMath.js';
 import { useDebounce, getDateBounds } from '../utils/validation.js';
 import { ConfirmDialog } from './ConfirmDialog.js';
 import { SwipeableItem } from './SwipeableItem.js';
@@ -51,6 +53,11 @@ export const ReportsTab: React.FC = () => {
   const [customTargetInput, setCustomTargetInput] = useState('');
   const [isSavingTarget, setIsSavingTarget] = useState(false);
   const [targetSaveSuccess, setTargetSaveSuccess] = useState(false);
+  const [bmrWarningData, setBmrWarningData] = useState<{
+    enteredKcal: number;
+    bmrKcal: number;
+  } | null>(null);
+  const [showBmrExplainWhy, setShowBmrExplainWhy] = useState(false);
 
   const { minDate, maxDate } = getDateBounds();
   const [allEntries, setAllEntries] = useState<FoodItem[]>([]);
@@ -732,6 +739,14 @@ export const ReportsTab: React.FC = () => {
                 e.preventDefault();
                 const val = parseInt(customTargetInput, 10);
                 if (isNaN(val) || val <= 0) return;
+
+                const bmr = calculateBmr(profile) || profile.bmr || 0;
+                if (bmr > 0 && val < bmr && !profile.bmrFloorOverridden) {
+                  setBmrWarningData({ enteredKcal: val, bmrKcal: bmr });
+                  setShowBmrExplainWhy(false);
+                  return;
+                }
+
                 setIsSavingTarget(true);
                 try {
                   await updateUserProfile({ targetCalories: val });
@@ -777,6 +792,104 @@ export const ReportsTab: React.FC = () => {
           </p>
         )}
       </div>
+
+      {/* BMR Floor Explanation Modal / Dialog */}
+      {bmrWarningData && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm animate-fadeIn">
+          <div className="w-full max-w-md rounded-2xl border border-amber-500/40 bg-zinc-900 p-5 shadow-2xl space-y-4">
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+              <div className="space-y-1">
+                <h3 className="text-sm font-bold text-zinc-100">Metabolic Floor Warning</h3>
+                <p className="text-xs text-zinc-300 leading-relaxed">
+                  {bmrWarningData.enteredKcal.toLocaleString()} kcal is{' '}
+                  {Math.round((bmrWarningData.enteredKcal / bmrWarningData.bmrKcal) * 100)}% of your BMR (
+                  {bmrWarningData.bmrKcal.toLocaleString()} kcal). Eating below BMR for weeks can cost you muscle, not just fat.
+                </p>
+              </div>
+            </div>
+
+            {showBmrExplainWhy && (
+              <div className="p-3 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-zinc-400 leading-relaxed space-y-1.5 animate-fadeIn">
+                <p className="font-semibold text-zinc-200">Why does your body need BMR?</p>
+                <p>
+                  Basal Metabolic Rate (BMR) is the minimum energy required to keep vital organs running at complete rest. Consistently eating below BMR slows metabolic adaptation and prompts the body to break down lean muscle tissue for fuel. Eating at or above BMR preserves lean muscle and sustains long-term metabolic health.
+                </p>
+              </div>
+            )}
+
+            <div className="space-y-2 pt-1">
+              <button
+                type="button"
+                onClick={async () => {
+                  const safeTarget = bmrWarningData.bmrKcal;
+                  setIsSavingTarget(true);
+                  try {
+                    await updateUserProfile({ targetCalories: safeTarget });
+                    setCustomTargetInput(String(safeTarget));
+                    setBmrWarningData(null);
+                    setIsEditingTarget(false);
+                    setTargetSaveSuccess(true);
+                    setTimeout(() => setTargetSaveSuccess(false), 3000);
+                  } finally {
+                    setIsSavingTarget(false);
+                  }
+                }}
+                className="w-full py-2.5 px-3 rounded-xl bg-teal-500 hover:bg-teal-400 text-zinc-950 text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-lg shadow-teal-500/20"
+              >
+                <Shield className="w-4 h-4" />
+                <span>Use my safe target ({bmrWarningData.bmrKcal.toLocaleString()} kcal)</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShowBmrExplainWhy((prev) => !prev)}
+                className="w-full py-2 px-3 rounded-xl bg-zinc-800 hover:bg-zinc-750 text-zinc-200 text-xs font-medium border border-zinc-700 transition-all flex items-center justify-center gap-1.5"
+              >
+                <Info className="w-3.5 h-3.5 text-zinc-400" />
+                <span>Explain why</span>
+              </button>
+
+              <div className="flex items-center justify-between pt-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setBmrWarningData(null);
+                    setShowBmrExplainWhy(false);
+                  }}
+                  className="text-xs text-zinc-400 hover:text-zinc-200 py-1 px-2"
+                >
+                  Cancel
+                </button>
+
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const overrideTarget = bmrWarningData.enteredKcal;
+                    setIsSavingTarget(true);
+                    try {
+                      await updateUserProfile({
+                        targetCalories: overrideTarget,
+                        bmrFloorOverridden: true,
+                        bmrFloorOverriddenAt: Date.now()
+                      });
+                      setBmrWarningData(null);
+                      setIsEditingTarget(false);
+                      setTargetSaveSuccess(true);
+                      setTimeout(() => setTargetSaveSuccess(false), 3000);
+                    } finally {
+                      setIsSavingTarget(false);
+                    }
+                  }}
+                  className="text-xs text-amber-400 hover:text-amber-300 font-semibold py-1 px-2 underline underline-offset-4"
+                >
+                  Override anyway
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* #26 & #27 CALORIE CHART WITH 7-DAY / 30-DAY MONTHLY / 12-MONTH YEARLY TOGGLE */}
       <div

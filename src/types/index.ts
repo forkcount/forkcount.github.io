@@ -259,6 +259,11 @@ export interface UserProfile {
   usedReferrals?: string[];
   xp?: number;
   streakDays?: number;
+  lastCalculationWeightKg?: number;
+  targetsUpdatedFromWeight?: boolean;
+  bmrFloorOverridden?: boolean;
+  bmrFloorOverriddenAt?: number;
+  hasMetabolicCondition?: boolean;
 }
 
 export interface MacroTarget {
@@ -269,6 +274,9 @@ export interface MacroTarget {
   carbsPct: number;
   fatPct: number;
   proteinPct: number;
+  minProteinGrams?: number;
+  calculatedProteinGrams?: number;
+  proteinRaisedToFloor?: boolean;
 }
 
 export interface Badge {
