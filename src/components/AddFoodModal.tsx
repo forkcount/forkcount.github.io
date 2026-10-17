@@ -29,6 +29,7 @@ import {
   DecipheredFoodItem
 } from '../utils/localAiEngine.js';
 import type { MealType } from '../types/index.js';
+import { SmartAiFoodInput } from './SmartAiFoodInput.js';
 
 interface AddFoodModalProps {
   isOpen: boolean;
@@ -405,9 +406,24 @@ export const AddFoodModal: React.FC<AddFoodModalProps> = ({ isOpen, onClose, def
     return false;
   }, [activeResult]);
 
+  // Check if user has entered food with parsed items (used to gate result card display)
+  const hasParsedItems = useMemo(() => {
+    return Boolean(
+      inputText.trim() &&
+      activeResult &&
+      activeResult.items &&
+      activeResult.items.length > 0 &&
+      activeResult.items.some(
+        (it) => it.name && it.name.trim().length > 0 && (it.calories > 0 || it.grams > 0 || it.protein > 0 || it.carbs > 0 || it.fat > 0)
+      )
+    );
+  }, [inputText, activeResult]);
+
   // Unified Log action: reads parsed item(s), saves to Firestore diary, resets form, and navigates back to Diary
-  const handleLogAndSave = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
+  const handleLogAndSave = async (eOrExplicitText?: React.FormEvent | string) => {
+    if (eOrExplicitText && typeof eOrExplicitText !== 'string' && 'preventDefault' in eOrExplicitText) {
+      eOrExplicitText.preventDefault();
+    }
     if (isSaving) return;
 
     if (isGuest && !consumeGuestAiCall()) {
@@ -415,10 +431,12 @@ export const AddFoodModal: React.FC<AddFoodModalProps> = ({ isOpen, onClose, def
       return;
     }
 
+    const explicitText = typeof eOrExplicitText === 'string' ? eOrExplicitText : inputText;
+    const trimmed = explicitText.trim();
+
     // Determine current items to log
     let targetResult = activeResult;
-    if (!targetResult || targetResult.items.length === 0) {
-      const trimmed = inputText.trim();
+    if (!targetResult || targetResult.items.length === 0 || (trimmed && trimmed !== inputText.trim())) {
       if (!trimmed) {
         setFormError('Add a food first.');
         return;
@@ -622,10 +640,10 @@ export const AddFoodModal: React.FC<AddFoodModalProps> = ({ isOpen, onClose, def
   if (!isOpen || isSubmitted) return null;
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4">
-      <div className="bg-zinc-900 border border-zinc-800 rounded-2xl max-w-lg w-full max-h-[92vh] flex flex-col shadow-2xl relative overflow-hidden">
+    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex flex-col justify-end sm:justify-center items-center overflow-hidden h-[100dvh]">
+      <div className="bg-zinc-900 border-t sm:border border-zinc-800 rounded-t-2xl sm:rounded-2xl max-w-lg w-full h-[100dvh] sm:h-auto sm:max-h-[92vh] flex flex-col shadow-2xl relative overflow-hidden">
         {/* Modal Header */}
-        <div className="p-4 border-b border-zinc-800 flex items-center justify-between">
+        <div className="p-4 border-b border-zinc-800 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-2">
             <span className="text-sm font-semibold text-zinc-100">Add to</span>
             <select
@@ -665,8 +683,11 @@ export const AddFoodModal: React.FC<AddFoodModalProps> = ({ isOpen, onClose, def
           </div>
         </div>
 
-        {/* Modal Body */}
-        <div className="p-4 overflow-y-auto flex-1 space-y-4">
+        {/* Modal Body / Content area */}
+        <div
+          className="content p-4 overflow-y-auto flex-1 space-y-4 pb-[120px]"
+          style={{ scrollBehavior: 'auto' }}
+        >
           {saveSuccessMsg && (
             <div className="p-3 bg-teal-950/80 border border-teal-500/50 rounded-xl flex items-center gap-2 text-teal-300 text-xs font-semibold animate-in fade-in duration-200">
               <Check className="w-4 h-4 text-teal-400" />
@@ -902,81 +923,24 @@ export const AddFoodModal: React.FC<AddFoodModalProps> = ({ isOpen, onClose, def
           ) : (
             /* SMART AI BOX (The Only Input) */
             <div className="space-y-4">
-              <form onSubmit={handleLogAndSave} className="space-y-2.5">
-                <div className="relative bg-zinc-950 border border-zinc-800 rounded-2xl p-3 focus-within:border-teal-500 transition-colors shadow-inner">
-                  <div className="flex items-center justify-between mb-1.5">
-                    <label className="text-[11px] font-semibold text-teal-400 flex items-center gap-1">
-                      <Sparkles className="w-3.5 h-3.5" />
-                      <span>Smart AI Food Input</span>
-                    </label>
-
-                    <div className="flex items-center gap-1">
-                      {/* Microphone button inside the Smart AI box */}
-                      <button
-                        type="button"
-                        onClick={toggleSpeechRecognition}
-                        disabled={!speechSupported}
-                        title={
-                          speechSupported
-                            ? isListening
-                              ? 'Listening... tap to stop'
-                              : 'Tap to speak food description'
-                            : 'Speech recognition not supported in this browser'
-                        }
-                        className={`p-1.5 rounded-lg transition-colors flex items-center gap-1 text-xs ${
-                          isListening
-                            ? 'bg-rose-500 text-white animate-pulse'
-                            : speechSupported
-                            ? 'text-zinc-400 hover:text-teal-300 hover:bg-zinc-800'
-                            : 'text-zinc-600 opacity-40 cursor-not-allowed'
-                        }`}
-                        aria-label="Speech to text"
-                      >
-                        {isListening ? (
-                          <>
-                            <Mic className="w-3.5 h-3.5 animate-bounce" />
-                            <span className="text-[10px] font-semibold">Listening...</span>
-                          </>
-                        ) : (
-                          <Mic className="w-3.5 h-3.5" />
-                        )}
-                      </button>
-
-                      {inputText.trim() && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setInputText('');
-                            setParsedResult(null);
-                            setFormError(null);
-                          }}
-                          className="p-1 rounded-md text-zinc-500 hover:text-zinc-300 transition-colors"
-                          title="Clear input"
-                        >
-                          <X className="w-3 h-3" />
-                        </button>
-                      )}
-                    </div>
-                  </div>
-
-                  <textarea
-                    rows={3}
-                    value={inputText}
-                    onChange={(e) => {
-                      setInputText(e.target.value);
-                      if (formError) setFormError(null);
-                    }}
-                    onFocus={(e) => e.preventDefault()}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && !e.shiftKey) {
-                        e.preventDefault();
-                        handleLogAndSave();
-                      }
-                    }}
-                    placeholder="Type or speak: 89g mango, 2 egs and tost, 1 pack Doritos, 1 can Coke Zero, or paste a recipe..."
-                    className="food-input w-full bg-transparent text-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none resize-none leading-relaxed"
-                  />
-                </div>
+              <div className="space-y-2.5">
+                <SmartAiFoodInput
+                  value={inputText}
+                  onChange={(val) => {
+                    setInputText(val);
+                    if (formError) setFormError(null);
+                  }}
+                  onSubmit={(val) => handleLogAndSave(val)}
+                  onClear={() => {
+                    setInputText('');
+                    setParsedResult(null);
+                    setFormError(null);
+                    setGramOverrides({});
+                  }}
+                  isListening={isListening}
+                  speechSupported={speechSupported}
+                  onToggleSpeech={toggleSpeechRecognition}
+                />
 
                 {formError && (
                   <div className="p-3 bg-rose-500/10 border border-rose-500/30 rounded-xl text-xs text-rose-300 flex items-center gap-2">
@@ -985,40 +949,22 @@ export const AddFoodModal: React.FC<AddFoodModalProps> = ({ isOpen, onClose, def
                   </div>
                 )}
 
-                {/* Actions: Scan Menu & Log Button */}
+                {/* Actions: Scan Menu Button */}
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
                     onClick={() => setIsScanningMenu(true)}
-                    className="px-3.5 py-2.5 rounded-xl bg-zinc-950 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors shrink-0"
+                    className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-zinc-950 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors shrink-0"
                     title="Scan restaurant menu photos"
                   >
                     <Camera className="w-4 h-4 text-teal-400" />
                     <span>Scan Menu</span>
                   </button>
-
-                  <button
-                    type="submit"
-                    disabled={!hasValidItems || isSaving}
-                    className="flex-1 py-2.5 bg-teal-500 hover:bg-teal-400 disabled:opacity-40 text-zinc-950 font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 transition-colors shadow-lg shadow-teal-500/20"
-                  >
-                    {isSaving ? (
-                      <>
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                        <span>Logging...</span>
-                      </>
-                    ) : (
-                      <>
-                        <Sparkles className="w-4 h-4" />
-                        <span>Log</span>
-                      </>
-                    )}
-                  </button>
                 </div>
-              </form>
+              </div>
 
-              {/* RESULT CARD FLOW */}
-              {activeResult && activeResult.items.length > 0 && (
+              {/* RESULT CARD FLOW: Only rendered when user has entered food with parsed items */}
+              {hasParsedItems && activeResult && (
                 <div className="bg-zinc-950 border border-teal-500/40 rounded-2xl p-4 space-y-4 animate-in fade-in duration-200">
                   {/* Result Header */}
                   <div className="flex items-start justify-between gap-2 border-b border-zinc-850 pb-3">
@@ -1090,7 +1036,7 @@ export const AddFoodModal: React.FC<AddFoodModalProps> = ({ isOpen, onClose, def
                       {activeResult.items.map((item, idx) => {
                         const hasOverride = Object.prototype.hasOwnProperty.call(gramOverrides, idx);
                         const currentGrams = hasOverride ? gramOverrides[idx] : item.grams;
-                        const isEditing = editingWeightIndex === idx || item.needsWeightConfirmation;
+                        const isEditing = editingWeightIndex === idx;
 
                         return (
                           <div
@@ -1118,13 +1064,18 @@ export const AddFoodModal: React.FC<AddFoodModalProps> = ({ isOpen, onClose, def
                                       type="number"
                                       min="0"
                                       step="any"
-                                      autoFocus
                                       value={currentGrams === 0 && !hasOverride ? '' : currentGrams}
                                       placeholder="grams"
                                       onChange={(e) => {
                                         const raw = e.target.value;
                                         const num = raw === '' ? 0 : Math.max(0, parseFloat(raw) || 0);
                                         setGramOverrides((prev) => ({ ...prev, [idx]: num }));
+                                      }}
+                                      onKeyDown={(e) => {
+                                        if (e.key === 'Enter') {
+                                          e.preventDefault();
+                                          setEditingWeightIndex(null);
+                                        }
                                       }}
                                       onBlur={() => setEditingWeightIndex(null)}
                                       className="w-16 bg-zinc-950 border border-teal-500 rounded px-1.5 py-0.5 text-right font-mono text-xs text-zinc-100 focus:outline-none"
@@ -1135,7 +1086,11 @@ export const AddFoodModal: React.FC<AddFoodModalProps> = ({ isOpen, onClose, def
                                   <button
                                     type="button"
                                     onClick={() => setEditingWeightIndex(idx)}
-                                    className="px-2 py-1 rounded bg-zinc-950 hover:bg-zinc-800 border border-zinc-750 text-[11px] font-mono text-zinc-200 flex items-center gap-1 transition-colors"
+                                    className={`px-2 py-1 rounded border text-[11px] font-mono flex items-center gap-1 transition-colors ${
+                                      item.needsWeightConfirmation
+                                        ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 hover:bg-amber-500/30'
+                                        : 'bg-zinc-950 hover:bg-zinc-800 border-zinc-750 text-zinc-200'
+                                    }`}
                                     title="Edit weight"
                                   >
                                     <span>{currentGrams}g</span>
@@ -1282,6 +1237,30 @@ export const AddFoodModal: React.FC<AddFoodModalProps> = ({ isOpen, onClose, def
             </div>
           )}
         </div>
+
+        {/* Sticky Log Button at the bottom (rendered ONLY when user has entered food with parsed items) */}
+        {hasParsedItems && (
+          <div className="sticky bottom-0 left-0 right-0 p-3 bg-zinc-900/95 backdrop-blur-md border-t border-zinc-800 shrink-0 z-10">
+            <button
+              type="button"
+              disabled={isSaving || !hasValidItems}
+              onClick={() => handleLogAndSave()}
+              className="w-full py-3 bg-teal-500 hover:bg-teal-400 disabled:opacity-50 text-zinc-950 font-bold rounded-xl text-xs flex items-center justify-center gap-2 transition-colors shadow-lg shadow-teal-500/20"
+            >
+              {isSaving ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>Logging to {mealType}...</span>
+                </>
+              ) : (
+                <>
+                  <Check className="w-4 h-4" />
+                  <span>Log to {mealType}</span>
+                </>
+              )}
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Barcode Scanner Modal */}
