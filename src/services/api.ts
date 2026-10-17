@@ -2103,8 +2103,183 @@ class ApiService {
   async devSendTestEmail(recipientEmail: string, templateType?: string): Promise<any> {
     return { resendResult: { ok: true }, recipientEmail, templateType: templateType || 'test' };
   }
-  async devInspectAccount(_email: string): Promise<any> {
-    return { exists: true };
+  async devInspectAccount(rawIdentifier: string): Promise<any> {
+    const clean = String(rawIdentifier || '').trim().toLowerCase().replace(/^@/, '');
+    if (!clean) {
+      throw new Error('Please enter a username or email to inspect.');
+    }
+
+    try {
+      const usersRef = collection(db, 'users');
+      let foundUserDoc: any = null;
+
+      // 1. Direct document lookup (in case input is doc ID or userId)
+      try {
+        const directDoc = await getDoc(doc(db, 'users', clean));
+        if (directDoc.exists()) {
+          foundUserDoc = { id: directDoc.id, ...directDoc.data() };
+        }
+      } catch {}
+
+      // 2. Query by username
+      if (!foundUserDoc) {
+        try {
+          const qUsername = query(usersRef, where('username', '==', clean));
+          const usernameSnap = await getDocs(qUsername);
+          if (!usernameSnap.empty) {
+            foundUserDoc = { id: usernameSnap.docs[0].id, ...usernameSnap.docs[0].data() };
+          }
+        } catch {}
+      }
+
+      // 3. Query by email
+      if (!foundUserDoc) {
+        try {
+          const qEmail = query(usersRef, where('email', '==', clean));
+          const emailSnap = await getDocs(qEmail);
+          if (!emailSnap.empty) {
+            foundUserDoc = { id: emailSnap.docs[0].id, ...emailSnap.docs[0].data() };
+          }
+        } catch {}
+      }
+
+      // 4. Scan users collection (case-insensitive username / profile.username / prefix match)
+      if (!foundUserDoc) {
+        try {
+          const allUsersSnap = await getDocs(usersRef);
+          allUsersSnap.forEach((d) => {
+            if (foundUserDoc) return;
+            const data = d.data();
+            const dId = d.id.toLowerCase();
+            const uName = (data.username || '').toLowerCase();
+            const pName = (data.profile?.username || '').toLowerCase();
+            const eMail = (data.email || '').toLowerCase();
+            const uId = (data.userId || '').toLowerCase();
+            if (
+              dId === clean ||
+              dId === `usr_${clean}` ||
+              dId.startsWith(`usr_${clean}_`) ||
+              uName === clean ||
+              pName === clean ||
+              eMail === clean ||
+              uId === clean
+            ) {
+              foundUserDoc = { id: d.id, ...data };
+            }
+          });
+        } catch {}
+      }
+
+      // 5. LocalCache fallback
+      if (!foundUserDoc && this.localCache.users) {
+        for (const [uid, udata] of Object.entries(this.localCache.users)) {
+          if (
+            uid.toLowerCase() === clean ||
+            udata.username?.toLowerCase() === clean ||
+            udata.email?.toLowerCase() === clean ||
+            udata.profile?.username?.toLowerCase() === clean
+          ) {
+            foundUserDoc = { id: uid, ...udata };
+            break;
+          }
+        }
+      }
+
+      if (!foundUserDoc) {
+        return {
+          found: false,
+          message: `No account found for "${rawIdentifier}".`
+        };
+      }
+
+      const targetUserId = foundUserDoc.userId || foundUserDoc.id;
+
+      // 2. Query diary entries from 'diaryEntries'
+      let diaryDocs: any[] = [];
+      try {
+        const diaryQ = query(collection(db, 'diaryEntries'), where('userId', '==', targetUserId));
+        const diarySnap = await getDocs(diaryQ);
+        diarySnap.forEach((d) => diaryDocs.push({ id: d.id, ...d.data() }));
+      } catch (err) {
+        console.warn('Firestore diaryEntries query error:', err);
+      }
+
+      if (diaryDocs.length === 0 && this.localCache.diary) {
+        for (const [dDate, items] of Object.entries(this.localCache.diary)) {
+          if (Array.isArray(items) && items.length > 0) {
+            diaryDocs.push({ date: dDate, items });
+          }
+        }
+      }
+
+      // 3. Query weight entries from 'weightEntries'
+      let weightDocs: any[] = [];
+      try {
+        const weightsQ = query(collection(db, 'weightEntries'), where('userId', '==', targetUserId));
+        const weightsSnap = await getDocs(weightsQ);
+        weightsSnap.forEach((d) => weightDocs.push({ id: d.id, ...d.data() }));
+      } catch (err) {
+        console.warn('Firestore weightEntries query error:', err);
+      }
+
+      if (weightDocs.length === 0 && this.localCache.weights && this.localCache.weights[targetUserId]) {
+        weightDocs = this.localCache.weights[targetUserId];
+      }
+
+      // Log immediately after query returns (Requirement 3)
+      console.log('The full user document object:', foundUserDoc);
+      console.log('The diary entries result:', diaryDocs);
+      console.log('The weights result:', weightDocs);
+
+      // Compute statistics
+      const distinctDays = new Set<string>();
+      let totalMealsCount = 0;
+      for (const d of diaryDocs) {
+        if (d.date) distinctDays.add(d.date);
+        if (Array.isArray(d.items)) {
+          totalMealsCount += d.items.length;
+        }
+      }
+
+      const profile = foundUserDoc.profile || {};
+      const stats = foundUserDoc.stats || {};
+      const createdDateVal = foundUserDoc.createdAt || profile.createdAt;
+      const lastSignInVal =
+        foundUserDoc.lastLoginAt ||
+        foundUserDoc.lastSignIn ||
+        foundUserDoc.updatedAt ||
+        foundUserDoc.createdAt;
+
+      const totalXP =
+        stats.totalXP ||
+        stats.xp ||
+        totalMealsCount * 10 + weightDocs.length * 15 + (stats.currentStreak || 1) * 20;
+
+      const accountData = {
+        userId: targetUserId,
+        email: foundUserDoc.email || foundUserDoc.username || profile.username || clean,
+        username: foundUserDoc.username || profile.username || clean,
+        displayName: profile.name || foundUserDoc.username || profile.username || 'User',
+        createdDate: createdDateVal,
+        lastSignIn: lastSignInVal,
+        daysLogged: distinctDays.size,
+        mealsLogged: totalMealsCount,
+        weightEntries: weightDocs.length,
+        currentStreak: stats.currentStreak || (distinctDays.size > 0 ? 1 : 0),
+        totalXP,
+        profile,
+        stats
+      };
+
+      return {
+        found: true,
+        account: accountData,
+        ...accountData
+      };
+    } catch (err: any) {
+      console.error('Account Inspector query error:', err);
+      throw err;
+    }
   }
   async devSendManualCode(_email: string): Promise<any> {
     return { code: '123456' };

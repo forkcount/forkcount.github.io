@@ -142,8 +142,13 @@ export const DevToolsSheet: React.FC<DevToolsSheetProps> = ({
     setInspectedAccount(null);
     try {
       const res = await api.devInspectAccount(username);
-      setInspectedAccount(res);
-      setInspectMessage(`Successfully loaded inspection for @${username}`);
+      const acc = res.account || (res.userId ? res : null);
+      if (acc) {
+        setInspectedAccount(acc);
+        setInspectMessage(`Successfully loaded inspection for @${acc.username || username}`);
+      } else {
+        setInspectMessage(res.message || 'No account found.');
+      }
     } catch (err: any) {
       setInspectMessage(err?.message || 'Could not inspect account.');
     } finally {
@@ -255,8 +260,10 @@ export const DevToolsSheet: React.FC<DevToolsSheetProps> = ({
     setInspectedAccount(null);
     try {
       const res = await api.devInspectAccount(inspectEmailInput.trim());
-      if (res.found && res.account) {
-        setInspectedAccount(res.account);
+      const acc = res.account || (res.userId ? res : null);
+      if (acc) {
+        setInspectedAccount(acc);
+        setInspectMessage(`Successfully loaded inspection for @${acc.username || inspectEmailInput.trim()}`);
       } else {
         setInspectMessage(res.message || 'No account found for that username or email.');
       }
@@ -837,9 +844,9 @@ export const DevToolsSheet: React.FC<DevToolsSheetProps> = ({
                   <span className="text-zinc-100">{formatSafeTimestamp(inspectedAccount.lastSignIn)}</span>
                 </div>
                 <div className="pt-1 text-zinc-400">
-                  {inspectedAccount.daysLogged}d logged · {inspectedAccount.mealsLogged} meals ·{' '}
-                  {inspectedAccount.weightEntries} weights · {inspectedAccount.currentStreak}d streak ·{' '}
-                  {inspectedAccount.totalXP} XP
+                  {inspectedAccount.daysLogged ?? 0}d logged · {inspectedAccount.mealsLogged ?? 0} meals ·{' '}
+                  {inspectedAccount.weightEntries ?? 0} weights · {inspectedAccount.currentStreak ?? 0}d streak ·{' '}
+                  {inspectedAccount.totalXP ?? 0} XP
                 </div>
               </div>
             )}
