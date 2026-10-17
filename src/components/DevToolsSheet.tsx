@@ -29,14 +29,27 @@ interface DevToolsSheetProps {
   userEmail?: string | null;
 }
 
-function formatSafeTimestamp(value?: string | number | null): string {
+function formatSafeTimestamp(value?: any, fallback = 'Not recorded'): string {
   if (value === undefined || value === null || value === '' || value === 'Never') {
-    return 'This is your first session';
+    return fallback;
+  }
+  if (typeof value === 'object') {
+    if (typeof value.toDate === 'function') {
+      try {
+        return value.toDate().toLocaleString();
+      } catch {}
+    }
+    if (typeof value.seconds === 'number') {
+      return new Date(value.seconds * 1000).toLocaleString();
+    }
+    if (typeof value._seconds === 'number') {
+      return new Date(value._seconds * 1000).toLocaleString();
+    }
   }
   const num = Number(value);
   const d = !Number.isNaN(num) && num > 0 ? new Date(num) : new Date(String(value));
   if (Number.isNaN(d.getTime())) {
-    return 'This is your first session';
+    return fallback;
   }
   return d.toLocaleString();
 }
@@ -144,6 +157,13 @@ export const DevToolsSheet: React.FC<DevToolsSheetProps> = ({
       const res = await api.devInspectAccount(username);
       const acc = res.account || (res.userId ? res : null);
       if (acc) {
+        console.log('INSPECTION DATA:', acc);
+        console.log('email:', acc.email);
+        console.log('displayName:', acc.displayName);
+        console.log('createdAt:', acc.createdAt);
+        console.log('lastSignIn:', acc.lastSignIn);
+        console.log('meals:', acc.meals);
+        console.log('weights:', acc.weights);
         setInspectedAccount(acc);
         setInspectMessage(`Successfully loaded inspection for @${acc.username || username}`);
       } else {
@@ -262,6 +282,13 @@ export const DevToolsSheet: React.FC<DevToolsSheetProps> = ({
       const res = await api.devInspectAccount(inspectEmailInput.trim());
       const acc = res.account || (res.userId ? res : null);
       if (acc) {
+        console.log('INSPECTION DATA:', acc);
+        console.log('email:', acc.email);
+        console.log('displayName:', acc.displayName);
+        console.log('createdAt:', acc.createdAt);
+        console.log('lastSignIn:', acc.lastSignIn);
+        console.log('meals:', acc.meals);
+        console.log('weights:', acc.weights);
         setInspectedAccount(acc);
         setInspectMessage(`Successfully loaded inspection for @${acc.username || inspectEmailInput.trim()}`);
       } else {
@@ -828,25 +855,47 @@ export const DevToolsSheet: React.FC<DevToolsSheetProps> = ({
             {inspectedAccount && (
               <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-3 space-y-1.5 text-[11px] font-mono text-zinc-300">
                 <div>
-                  User ID: <span className="text-zinc-100">{inspectedAccount.userId}</span>
+                  User ID: <span className="text-zinc-100">{inspectedAccount.userId || inspectedAccount.id || 'Not set'}</span>
                 </div>
                 <div>
-                  Email / Username: <span className="text-teal-400">{inspectedAccount.email}</span>
+                  Email / Username:{' '}
+                  <span className="text-teal-400">
+                    {inspectedAccount.email || inspectedAccount.username || inspectedAccount.profile?.username || 'Not set'}
+                  </span>
                 </div>
                 <div>
-                  Display Name: <span className="text-zinc-100">{inspectedAccount.displayName}</span>
+                  Display Name:{' '}
+                  <span className="text-zinc-100">
+                    {inspectedAccount.displayName || inspectedAccount.name || inspectedAccount.profile?.name || inspectedAccount.username || 'Not set'}
+                  </span>
                 </div>
                 <div>
-                  Created: <span className="text-zinc-100">{formatSafeTimestamp(inspectedAccount.createdDate)}</span>
+                  Created:{' '}
+                  <span className="text-zinc-100">
+                    {formatSafeTimestamp(
+                      inspectedAccount.createdAt ?? inspectedAccount.createdDate ?? inspectedAccount.profile?.createdAt,
+                      'Not recorded'
+                    )}
+                  </span>
                 </div>
                 <div>
                   Last Signed In:{' '}
-                  <span className="text-zinc-100">{formatSafeTimestamp(inspectedAccount.lastSignIn)}</span>
+                  <span className="text-zinc-100">
+                    {formatSafeTimestamp(
+                      inspectedAccount.lastSignIn ?? inspectedAccount.lastLoginAt ?? inspectedAccount.updatedAt ?? inspectedAccount.createdAt,
+                      'This is your first session'
+                    )}
+                  </span>
                 </div>
                 <div className="pt-1 text-zinc-400">
-                  {inspectedAccount.daysLogged ?? 0}d logged · {inspectedAccount.mealsLogged ?? 0} meals ·{' '}
-                  {inspectedAccount.weightEntries ?? 0} weights · {inspectedAccount.currentStreak ?? 0}d streak ·{' '}
-                  {inspectedAccount.totalXP ?? 0} XP
+                  {(() => {
+                    const days = inspectedAccount.daysLogged ?? inspectedAccount.days ?? 0;
+                    const meals = inspectedAccount.mealsLogged ?? inspectedAccount.meals ?? inspectedAccount.stats?.mealsLoggedTotal ?? 0;
+                    const weights = inspectedAccount.weightEntries ?? inspectedAccount.weights ?? 0;
+                    const streak = inspectedAccount.currentStreak ?? inspectedAccount.streak ?? inspectedAccount.stats?.currentStreak ?? 0;
+                    const xp = inspectedAccount.totalXP ?? inspectedAccount.totalXp ?? inspectedAccount.xp ?? inspectedAccount.stats?.totalXP ?? inspectedAccount.stats?.xp ?? 0;
+                    return `${days} ${days === 1 ? 'day' : 'days'} logged · ${meals} ${meals === 1 ? 'meal' : 'meals'} · ${weights} ${weights === 1 ? 'weight' : 'weights'} · ${streak} day streak · ${xp} XP`;
+                  })()}
                 </div>
               </div>
             )}

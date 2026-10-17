@@ -2257,16 +2257,26 @@ class ApiService {
 
       const accountData = {
         userId: targetUserId,
+        id: targetUserId,
         email: foundUserDoc.email || foundUserDoc.username || profile.username || clean,
         username: foundUserDoc.username || profile.username || clean,
         displayName: profile.name || foundUserDoc.username || profile.username || 'User',
+        name: profile.name || foundUserDoc.username || profile.username || 'User',
         createdDate: createdDateVal,
+        createdAt: createdDateVal,
         lastSignIn: lastSignInVal,
+        lastLoginAt: lastSignInVal,
         daysLogged: distinctDays.size,
+        days: distinctDays.size,
         mealsLogged: totalMealsCount,
+        meals: totalMealsCount,
         weightEntries: weightDocs.length,
+        weights: weightDocs.length,
         currentStreak: stats.currentStreak || (distinctDays.size > 0 ? 1 : 0),
+        streak: stats.currentStreak || (distinctDays.size > 0 ? 1 : 0),
         totalXP,
+        totalXp: totalXP,
+        xp: totalXP,
         profile,
         stats
       };
