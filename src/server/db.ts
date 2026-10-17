@@ -1011,26 +1011,42 @@ export function updateProfile(userId: string, updates: Partial<UserProfile>): Us
   return updated;
 }
 
-function computeConsecutiveStreak(loggedDates: string[], freezeDates: string[]): number {
+export function computeConsecutiveStreak(loggedDates: string[], freezeDates: string[] = [], referenceDate = new Date()): number {
   const dateSet = new Set([...loggedDates, ...freezeDates]);
   if (dateSet.size === 0) return 0;
 
-  const sorted = Array.from(dateSet).sort();
-  let maxStreak = 1;
-  let currentStreak = 1;
+  const formatYMD = (d: Date) => {
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
 
-  for (let i = 1; i < sorted.length; i++) {
-    const prev = new Date(sorted[i - 1] + 'T00:00:00').getTime();
-    const curr = new Date(sorted[i] + 'T00:00:00').getTime();
-    const diffDays = Math.round((curr - prev) / (1000 * 60 * 60 * 24));
-    if (diffDays === 1) {
-      currentStreak++;
-      if (currentStreak > maxStreak) maxStreak = currentStreak;
-    } else if (diffDays > 1) {
-      currentStreak = 1;
+  const todayStr = formatYMD(referenceDate);
+  const yesterday = new Date(referenceDate);
+  yesterday.setDate(yesterday.getDate() - 1);
+  const yesterdayStr = formatYMD(yesterday);
+
+  let checkDate: Date;
+  if (dateSet.has(todayStr)) {
+    checkDate = new Date(referenceDate);
+  } else if (dateSet.has(yesterdayStr)) {
+    checkDate = new Date(yesterday);
+  } else {
+    return 0;
+  }
+
+  let streak = 0;
+  while (true) {
+    const curStr = formatYMD(checkDate);
+    if (dateSet.has(curStr)) {
+      streak++;
+      checkDate.setDate(checkDate.getDate() - 1);
+    } else {
+      break;
     }
   }
-  return currentStreak;
+  return streak;
 }
 
 export function getUserStats(userId: string): UserStats {
