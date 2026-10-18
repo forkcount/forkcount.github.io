@@ -161,6 +161,7 @@ export interface SavedFood {
   userId: string;
   name: string;
   calories: number;
+  kcal?: number;
   carbs: number;
   fat: number;
   protein: number;
@@ -168,6 +169,8 @@ export interface SavedFood {
   sugar?: number;
   sodium?: number;
   serving: string;
+  lastLoggedAt?: number;
+  logCount?: number;
   createdAt: number;
 }
 
@@ -305,11 +308,14 @@ export interface PlanDayMeal {
   mealType: MealType;
   name: string;
   ingredients: string[];
+  instructions?: string[];
   calories: number;
   protein: number;
   carbs: number;
   fat: number;
   prepTime: string;
+  cookTime?: string;
+  totalTime?: string;
   aisle: 'produce' | 'dairy' | 'meat' | 'pantry' | 'frozen';
   costEstimate?: number;
   servings?: number;

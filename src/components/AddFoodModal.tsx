@@ -16,7 +16,8 @@ import {
   Loader2,
   FileImage,
   Flame,
-  Info
+  Info,
+  Bookmark
 } from 'lucide-react';
 import { useApp } from '../context/AppContext.js';
 import { api } from '../services/api.js';
@@ -73,6 +74,7 @@ export const AddFoodModal: React.FC<AddFoodModalProps> = ({ isOpen, onClose, def
   const [editingWeightIndex, setEditingWeightIndex] = useState<number | null>(null);
   const [userServingsEaten, setUserServingsEaten] = useState<string>('1');
   const [isSaving, setIsSaving] = useState(false);
+  const [isSavingMeal, setIsSavingMeal] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [recipeServingsOverride, setRecipeServingsOverride] = useState<number | null>(null);
   const [saveSuccessMsg, setSaveSuccessMsg] = useState<string | null>(null);
@@ -559,6 +561,37 @@ export const AddFoodModal: React.FC<AddFoodModalProps> = ({ isOpen, onClose, def
     }
   };
 
+  const handleSaveMeal = async () => {
+    if (!activeResult || !hasValidItems || isSavingMeal) return;
+    setIsSavingMeal(true);
+    setSaveSuccessMsg(null);
+    setFormError(null);
+    try {
+      const mealName = activeResult.mealSummaryName || 'Saved Meal';
+      const itemsToSave = activeResult.items.map((it, idx) => {
+        const grams = Object.prototype.hasOwnProperty.call(gramOverrides, idx) ? gramOverrides[idx] : it.grams;
+        const scale = it.grams > 0 ? grams / it.grams : 1;
+        return {
+          name: it.name,
+          calories: Math.round(it.calories * scale),
+          protein: Math.round(it.protein * scale * 10) / 10,
+          carbs: Math.round(it.carbs * scale * 10) / 10,
+          fat: Math.round(it.fat * scale * 10) / 10,
+          serving: `${grams}g`,
+          mealType
+        };
+      });
+
+      await api.saveMealDirect(mealName, itemsToSave);
+      setSaveSuccessMsg(`Saved "${mealName}" to your saved meals!`);
+      setTimeout(() => setSaveSuccessMsg(null), 4000);
+    } catch (err: any) {
+      setFormError(err?.message || 'Failed to save meal.');
+    } finally {
+      setIsSavingMeal(false);
+    }
+  };
+
   // Menu photo upload handler
   const handlePhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -963,8 +996,8 @@ export const AddFoodModal: React.FC<AddFoodModalProps> = ({ isOpen, onClose, def
                 </div>
               </div>
 
-              {/* RESULT CARD FLOW: Only rendered when user has entered food with parsed items */}
-              {hasParsedItems && activeResult && (
+              {/* NUTRITION BREAKDOWN PANEL: Visible at all times below Smart AI input */}
+              {hasParsedItems && activeResult ? (
                 <div className="bg-zinc-950 border border-teal-500/40 rounded-2xl p-4 space-y-4 animate-in fade-in duration-200">
                   {/* Result Header */}
                   <div className="flex items-start justify-between gap-2 border-b border-zinc-850 pb-3">
@@ -1212,55 +1245,117 @@ export const AddFoodModal: React.FC<AddFoodModalProps> = ({ isOpen, onClose, def
                       </div>
                     );
                   })()}
+                </div>
+              ) : (
+                /* DEFAULT STATE: Nutrition breakdown panel visible before typing */
+                <div className="bg-zinc-950 border border-zinc-800 rounded-2xl p-4 space-y-4">
+                  {/* Result Header Placeholder */}
+                  <div className="flex items-start justify-between gap-2 border-b border-zinc-850 pb-3">
+                    <div>
+                      <h3 className="text-sm font-bold text-zinc-300">
+                        Calculated nutritional breakdown from weight
+                      </h3>
+                      <p className="text-[11px] text-zinc-500 mt-0.5">
+                        Type a food above to see the breakdown.
+                      </p>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <span className="text-lg font-mono font-extrabold text-zinc-600 block">
+                        0 kcal
+                      </span>
+                      <span className="text-[10px] text-zinc-600">total</span>
+                    </div>
+                  </div>
 
-                  {/* Save/Log Button at the Bottom */}
-                  <button
-                    type="button"
-                    disabled={isSaving || !hasValidItems}
-                    onClick={handleLogAndSave}
-                    className="w-full py-3 bg-teal-500 hover:bg-teal-400 disabled:opacity-50 text-zinc-950 font-bold rounded-xl text-xs flex items-center justify-center gap-2 transition-colors shadow-lg shadow-teal-500/20"
-                  >
-                    {isSaving ? (
-                      <>
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                        <span>Logging to {mealType}...</span>
-                      </>
-                    ) : (
-                      <>
-                        <Check className="w-4 h-4" />
-                        <span>Log to {mealType}</span>
-                      </>
-                    )}
-                  </button>
+                  {/* Empty Macros Bar */}
+                  <div className="grid grid-cols-4 gap-2 bg-zinc-900/50 p-2.5 rounded-xl border border-zinc-850 text-center font-mono">
+                    <div>
+                      <span className="text-[10px] text-zinc-600 uppercase block">Calories</span>
+                      <span className="text-xs font-bold text-zinc-500">0</span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-zinc-600 uppercase block">Protein</span>
+                      <span className="text-xs font-bold text-zinc-500">0g</span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-zinc-600 uppercase block">Carbs</span>
+                      <span className="text-xs font-bold text-zinc-500">0g</span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-zinc-600 uppercase block">Fat</span>
+                      <span className="text-xs font-bold text-zinc-500">0g</span>
+                    </div>
+                  </div>
+
+                  {/* Health Rating Placeholder */}
+                  <div className="bg-zinc-900/50 border border-zinc-850 rounded-xl p-3 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold text-zinc-400">Health Rating</span>
+                      <span className="text-xs font-mono font-bold px-2 py-0.5 rounded-md bg-zinc-900 text-zinc-500 border border-zinc-800">
+                        — / 10
+                      </span>
+                    </div>
+                    <div className="w-full h-1.5 bg-zinc-900 rounded-full overflow-hidden">
+                      <div className="h-full bg-zinc-700 w-0" />
+                    </div>
+                    <p className="text-[11px] text-zinc-500 leading-relaxed italic">
+                      Waiting for input.
+                    </p>
+                  </div>
                 </div>
               )}
             </div>
           )}
         </div>
 
-        {/* Sticky Log Button at the bottom (rendered ONLY when user has entered food with parsed items) */}
-        {hasParsedItems && (
-          <div className="sticky bottom-0 left-0 right-0 p-3 bg-zinc-900/95 backdrop-blur-md border-t border-zinc-800 shrink-0 z-10">
-            <button
-              type="button"
-              disabled={isSaving || !hasValidItems}
-              onClick={() => handleLogAndSave()}
-              className="w-full py-3 bg-teal-500 hover:bg-teal-400 disabled:opacity-50 text-zinc-950 font-bold rounded-xl text-xs flex items-center justify-center gap-2 transition-colors shadow-lg shadow-teal-500/20"
-            >
-              {isSaving ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>Logging to {mealType}...</span>
-                </>
-              ) : (
-                <>
-                  <Check className="w-4 h-4" />
-                  <span>Log to {mealType}</span>
-                </>
-              )}
-            </button>
+        {/* Save success banner if meal saved */}
+        {saveSuccessMsg && (
+          <div className="px-4 py-2 bg-teal-950/80 border-t border-teal-500/40 text-teal-300 text-xs flex items-center gap-2 shrink-0">
+            <Check className="w-4 h-4 text-teal-400 shrink-0" />
+            <span>{saveSuccessMsg}</span>
           </div>
         )}
+
+        {/* Sticky Action Buttons at the bottom (Save meal & Log to [meal]) */}
+        <div className="sticky bottom-0 left-0 right-0 p-3 bg-zinc-900/95 backdrop-blur-md border-t border-zinc-800 shrink-0 z-10 flex items-center gap-2">
+          <button
+            type="button"
+            disabled={isSaving || isSavingMeal || !hasValidItems}
+            onClick={handleSaveMeal}
+            className="flex-1 py-3 bg-zinc-950 hover:bg-zinc-800 disabled:opacity-40 disabled:hover:bg-zinc-950 text-teal-300 border border-teal-500/40 font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 transition-colors shadow-sm"
+          >
+            {isSavingMeal ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span>Saving meal...</span>
+              </>
+            ) : (
+              <>
+                <Bookmark className="w-4 h-4 text-teal-400" />
+                <span>Save meal</span>
+              </>
+            )}
+          </button>
+
+          <button
+            type="button"
+            disabled={isSaving || isSavingMeal || !hasValidItems}
+            onClick={() => handleLogAndSave()}
+            className="flex-1 py-3 bg-teal-500 hover:bg-teal-400 disabled:opacity-40 disabled:hover:bg-teal-500 text-zinc-950 font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 transition-colors shadow-lg shadow-teal-500/20"
+          >
+            {isSaving ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span>Logging to {mealType}...</span>
+              </>
+            ) : (
+              <>
+                <Check className="w-4 h-4" />
+                <span>Log to {mealType}</span>
+              </>
+            )}
+          </button>
+        </div>
       </div>
 
       {/* Barcode Scanner Modal */}

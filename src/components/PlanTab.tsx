@@ -14,7 +14,9 @@ import {
   Utensils,
   DollarSign,
   ChefHat,
-  Users
+  Users,
+  X,
+  Clock
 } from 'lucide-react';
 import { useApp } from '../context/AppContext.js';
 import { api } from '../services/api.js';
@@ -41,6 +43,12 @@ export const PlanTab: React.FC = () => {
   const [loggedMealIds, setLoggedMealIds] = useState<Set<string>>(new Set());
   const [loggedWorkoutDays, setLoggedWorkoutDays] = useState<Set<number>>(new Set());
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [selectedRecipeModal, setSelectedRecipeModal] = useState<{
+    meal: PlanDayMeal;
+    dayIdx: number;
+    mealIdx: number;
+  } | null>(null);
+  const [recipeToast, setRecipeToast] = useState<string | null>(null);
 
   // Wizard Questions state
   const [restrictions, setRestrictions] = useState<string[]>([]);
@@ -130,19 +138,19 @@ export const PlanTab: React.FC = () => {
   const todayIndex = getTodayDayIndex();
   const currentDayPlan = cachedPlan?.days?.[todayIndex] || cachedPlan?.days?.[0];
 
-  const handleLogPlanMeal = async (meal: PlanDayMeal, mealIndex: number) => {
-    const key = `${todayIndex}-${mealIndex}-${meal.name}`;
+  const handleLogPlanMeal = async (meal: PlanDayMeal, mealIndex: number, dayIdx: number = todayIndex) => {
+    const key = `${dayIdx}-${mealIndex}-${meal.name}`;
     if (loggedMealIds.has(key)) return;
 
     await addFoodItem({
       date: activeDate,
       mealType: meal.mealType,
-      name: meal.name,
-      calories: meal.calories,
-      carbs: meal.carbs,
-      fat: meal.fat,
-      protein: meal.protein,
-      serving: '1 meal portion',
+      name: `${meal.name}${servingsScale > 1 ? ` (${servingsScale}×)` : ''}`,
+      calories: Math.round(meal.calories * servingsScale),
+      carbs: Math.round(meal.carbs * servingsScale),
+      fat: Math.round(meal.fat * servingsScale),
+      protein: Math.round(meal.protein * servingsScale),
+      serving: `${servingsScale} portion${servingsScale > 1 ? 's' : ''}`,
       source: 'plan'
     });
 
@@ -909,7 +917,8 @@ export const PlanTab: React.FC = () => {
                   return (
                     <div
                       key={mIdx}
-                      className="p-3 bg-zinc-950/80 border border-zinc-800 rounded-xl space-y-2"
+                      onClick={() => setSelectedRecipeModal({ meal, dayIdx: todayIndex, mealIdx: mIdx })}
+                      className="p-3 bg-zinc-950/80 border border-zinc-800 rounded-xl space-y-2 cursor-pointer hover:border-zinc-700 transition-colors"
                     >
                       <div className="flex items-center justify-between gap-2">
                         <div className="max-w-[65%]">
@@ -923,8 +932,8 @@ export const PlanTab: React.FC = () => {
                             {meal.name}
                           </span>
                           <div className="text-[10px] text-zinc-500 font-mono mt-0.5">
-                            <span className="text-teal-400 font-semibold">{meal.calories} kcal</span>
-                            <span> · {meal.protein}p {meal.carbs}c {meal.fat}f</span>
+                            <span className="text-teal-400 font-semibold">{Math.round(meal.calories * servingsScale)} kcal</span>
+                            <span> · {Math.round(meal.protein * servingsScale)}p {Math.round(meal.carbs * servingsScale)}c {Math.round(meal.fat * servingsScale)}f</span>
                           </div>
                         </div>
 
@@ -932,7 +941,10 @@ export const PlanTab: React.FC = () => {
                           {/* #51 Swap a meal */}
                           <button
                             type="button"
-                            onClick={() => handleSwapMeal(todayIndex, mIdx)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleSwapMeal(todayIndex, mIdx);
+                            }}
                             className="px-2 py-1.5 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 hover:text-teal-300 rounded-lg text-[11px] flex items-center gap-1 transition-colors"
                             title="Swap meal with another matching macros"
                           >
@@ -942,7 +954,10 @@ export const PlanTab: React.FC = () => {
 
                           <button
                             type="button"
-                            onClick={() => handleLogPlanMeal(meal, mIdx)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleLogPlanMeal(meal, mIdx);
+                            }}
                             disabled={isLogged}
                             className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1 transition-colors ${
                               isLogged
@@ -1072,7 +1087,8 @@ export const PlanTab: React.FC = () => {
                         {day.meals.map((meal, mIdx) => (
                           <div
                             key={mIdx}
-                            className="p-2 rounded-lg bg-zinc-950 border border-zinc-850 flex items-center justify-between text-xs"
+                            onClick={() => setSelectedRecipeModal({ meal, dayIdx: dIdx, mealIdx: mIdx })}
+                            className="p-2 rounded-lg bg-zinc-950 border border-zinc-850 flex items-center justify-between text-xs cursor-pointer hover:border-zinc-750 transition-colors"
                           >
                             <div className="truncate pr-2">
                               <span className="text-[10px] text-teal-400 block uppercase">
@@ -1082,15 +1098,43 @@ export const PlanTab: React.FC = () => {
                                 {meal.name}
                               </span>
                             </div>
-                            <div className="flex items-center gap-2 shrink-0">
-                              <span className="font-mono text-zinc-400">{meal.calories} kcal</span>
+                            <div className="flex items-center gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
+                              <span className="font-mono text-zinc-400">{Math.round(meal.calories * servingsScale)} kcal</span>
                               <button
-                                onClick={() => handleSwapMeal(dIdx, mIdx)}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleSwapMeal(dIdx, mIdx);
+                                }}
                                 className="px-2 py-1 rounded bg-zinc-900 text-zinc-400 hover:text-teal-300 flex items-center gap-1 text-[10px]"
                                 title="Swap meal"
                               >
                                 <RefreshCw className="w-3 h-3" />
                                 Swap
+                              </button>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleLogPlanMeal(meal, mIdx, dIdx);
+                                }}
+                                disabled={loggedMealIds.has(`${dIdx}-${mIdx}-${meal.name}`)}
+                                className={`px-2 py-1 rounded text-[10px] font-semibold flex items-center gap-1 transition-colors ${
+                                  loggedMealIds.has(`${dIdx}-${mIdx}-${meal.name}`)
+                                    ? 'bg-zinc-850 text-teal-400 border border-teal-500/30'
+                                    : 'bg-teal-500 hover:bg-teal-400 text-zinc-950 font-bold'
+                                }`}
+                              >
+                                {loggedMealIds.has(`${dIdx}-${mIdx}-${meal.name}`) ? (
+                                  <>
+                                    <CheckCircle2 className="w-3 h-3" />
+                                    Logged
+                                  </>
+                                ) : (
+                                  <>
+                                    <Plus className="w-3 h-3" />
+                                    Log
+                                  </>
+                                )}
                               </button>
                             </div>
                           </div>
@@ -1100,6 +1144,146 @@ export const PlanTab: React.FC = () => {
                   </div>
                 );
               })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Recipe Detail Modal */}
+      {selectedRecipeModal && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex flex-col justify-end sm:justify-center items-center overflow-hidden h-[100dvh]">
+          <div className="bg-zinc-900 border-t sm:border border-zinc-800 rounded-t-2xl sm:rounded-2xl max-w-lg w-full h-[90dvh] sm:h-auto sm:max-h-[90vh] flex flex-col shadow-2xl relative overflow-hidden animate-in fade-in duration-200">
+            {/* Modal Header */}
+            <div className="p-4 border-b border-zinc-800 flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-teal-500/20 text-teal-300 font-bold uppercase border border-teal-500/40">
+                  {selectedRecipeModal.meal.mealType}
+                </span>
+                <h3 className="text-sm font-bold text-zinc-100 truncate">
+                  {selectedRecipeModal.meal.name}
+                </h3>
+              </div>
+              <button
+                onClick={() => setSelectedRecipeModal(null)}
+                className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-100 transition-colors"
+                aria-label="Close"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Modal Body (Scrollable) */}
+            <div className="p-4 overflow-y-auto flex-1 space-y-4 pb-[100px]">
+              {/* Times & Servings */}
+              <div className="grid grid-cols-3 gap-2 bg-zinc-950 p-3 rounded-xl border border-zinc-800 text-center font-mono text-xs">
+                <div>
+                  <span className="text-[10px] text-zinc-500 uppercase block">Prep Time</span>
+                  <span className="font-semibold text-zinc-200">{selectedRecipeModal.meal.prepTime || '10 min'}</span>
+                </div>
+                <div>
+                  <span className="text-[10px] text-zinc-500 uppercase block">Cook Time</span>
+                  <span className="font-semibold text-zinc-200">{selectedRecipeModal.meal.cookTime || '15 min'}</span>
+                </div>
+                <div>
+                  <span className="text-[10px] text-zinc-500 uppercase block">Servings</span>
+                  <span className="font-semibold text-teal-400">{servingsScale} serving{servingsScale > 1 ? 's' : ''}</span>
+                </div>
+              </div>
+
+              {/* Macros & Calories */}
+              <div className="grid grid-cols-4 gap-2 bg-zinc-950 p-3 rounded-xl border border-zinc-800 text-center font-mono">
+                <div>
+                  <span className="text-[10px] text-zinc-500 uppercase block">Calories</span>
+                  <span className="text-xs font-bold text-teal-400">{Math.round(selectedRecipeModal.meal.calories * servingsScale)} kcal</span>
+                </div>
+                <div>
+                  <span className="text-[10px] text-teal-400 uppercase block">Protein</span>
+                  <span className="text-xs font-bold text-teal-300">{Math.round(selectedRecipeModal.meal.protein * servingsScale)}g</span>
+                </div>
+                <div>
+                  <span className="text-[10px] text-blue-400 uppercase block">Carbs</span>
+                  <span className="text-xs font-bold text-blue-300">{Math.round(selectedRecipeModal.meal.carbs * servingsScale)}g</span>
+                </div>
+                <div>
+                  <span className="text-[10px] text-amber-400 uppercase block">Fat</span>
+                  <span className="text-xs font-bold text-amber-300">{Math.round(selectedRecipeModal.meal.fat * servingsScale)}g</span>
+                </div>
+              </div>
+
+              {/* Ingredients List */}
+              <div className="space-y-2 bg-zinc-950 p-3.5 rounded-xl border border-zinc-800">
+                <h4 className="text-xs font-bold text-zinc-200 uppercase tracking-wider flex items-center gap-1.5">
+                  <Utensils className="w-3.5 h-3.5 text-teal-400" />
+                  <span>Ingredients</span>
+                </h4>
+                <ul className="space-y-1.5 text-xs text-zinc-300 font-mono">
+                  {selectedRecipeModal.meal.ingredients && selectedRecipeModal.meal.ingredients.length > 0 ? (
+                    selectedRecipeModal.meal.ingredients.map((ing, i) => (
+                      <li key={i} className="flex items-start gap-2 bg-zinc-900/60 p-2 rounded-lg border border-zinc-850">
+                        <span className="text-teal-400 font-bold">•</span>
+                        <span>{scaleIngredientText(ing, servingsScale)}</span>
+                      </li>
+                    ))
+                  ) : (
+                    <li className="text-zinc-500 italic text-[11px]">No ingredients listed.</li>
+                  )}
+                </ul>
+              </div>
+
+              {/* Step-by-Step Instructions */}
+              <div className="space-y-2 bg-zinc-950 p-3.5 rounded-xl border border-zinc-800">
+                <h4 className="text-xs font-bold text-zinc-200 uppercase tracking-wider flex items-center gap-1.5">
+                  <ChefHat className="w-3.5 h-3.5 text-teal-400" />
+                  <span>Step-by-Step Instructions</span>
+                </h4>
+                <ol className="space-y-2.5 text-xs text-zinc-300">
+                  {(selectedRecipeModal.meal.instructions && selectedRecipeModal.meal.instructions.length > 0
+                    ? selectedRecipeModal.meal.instructions
+                    : [
+                        'Prepare and measure all ingredients according to the quantities listed.',
+                        'Heat a pan or pot over medium heat with a drizzle of olive oil or cooking spray.',
+                        'Combine and cook ingredients, stirring occasionally until tender and fully heated through.',
+                        'Season with salt, pepper, and your favorite herbs to taste.',
+                        'Plate, serve warm, and enjoy your meal!'
+                      ]
+                  ).map((step, sIdx) => (
+                    <li key={sIdx} className="flex items-start gap-2.5 bg-zinc-900/60 p-2.5 rounded-lg border border-zinc-850">
+                      <span className="shrink-0 w-5 h-5 rounded-full bg-teal-500/20 text-teal-300 font-mono font-bold text-[10px] flex items-center justify-center border border-teal-500/40">
+                        {sIdx + 1}
+                      </span>
+                      <span className="leading-relaxed">{step}</span>
+                    </li>
+                  ))}
+                </ol>
+              </div>
+            </div>
+
+            {/* Toast Notification */}
+            {recipeToast && (
+              <div className="absolute top-16 left-4 right-4 bg-teal-950 border border-teal-500/50 text-teal-300 text-xs p-3 rounded-xl shadow-lg z-20 flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 text-teal-400 shrink-0" />
+                <span>{recipeToast}</span>
+              </div>
+            )}
+
+            {/* Sticky Bottom Log Button */}
+            <div className="sticky bottom-0 left-0 right-0 p-3 bg-zinc-900/95 backdrop-blur-md border-t border-zinc-800 shrink-0 z-10 flex items-center gap-2">
+              <button
+                type="button"
+                onClick={async () => {
+                  const { meal, dayIdx, mealIdx } = selectedRecipeModal;
+                  await handleLogPlanMeal(meal, mealIdx, dayIdx);
+                  setRecipeToast(`Logged "${meal.name}" to ${meal.mealType}!`);
+                  setTimeout(() => {
+                    setRecipeToast(null);
+                    setSelectedRecipeModal(null);
+                  }, 1500);
+                }}
+                className="w-full py-3 bg-teal-500 hover:bg-teal-400 text-zinc-950 font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 transition-colors shadow-lg shadow-teal-500/20"
+              >
+                <CheckCircle2 className="w-4 h-4" />
+                <span>Log to {selectedRecipeModal.meal.mealType}</span>
+              </button>
             </div>
           </div>
         </div>

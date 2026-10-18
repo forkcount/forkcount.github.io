@@ -164,6 +164,7 @@ interface LocalCacheData {
   savedFoods: Record<string, SavedFood[]>;
   savedRecipes: Record<string, SavedRecipe[]>;
   mealTemplates: Record<string, MealTemplate[]>;
+  savedMeals?: Record<string, any[]>;
   plans: Record<string, WeekPlan>;
 }
 
@@ -184,6 +185,7 @@ function loadLocalCache(): LocalCacheData {
         savedFoods: {},
         savedRecipes: {},
         mealTemplates: {},
+        savedMeals: {},
         plans: {}
       };
     }
@@ -236,25 +238,30 @@ class ApiService {
   setToken(token: string, isGuest: boolean, _rememberMe: boolean = true) {
     if (!token || token === 'undefined' || token === 'null') return;
     this.token = token;
-    localStorage.setItem(TOKEN_KEY, token);
-    sessionStorage.removeItem(TOKEN_KEY);
-    if (isGuest) {
-      localStorage.setItem(GUEST_KEY, token);
-    } else {
-      localStorage.removeItem(GUEST_KEY);
+    if (typeof window !== 'undefined' && typeof localStorage !== 'undefined') {
+      localStorage.setItem(TOKEN_KEY, token);
+      if (typeof sessionStorage !== 'undefined') sessionStorage.removeItem(TOKEN_KEY);
+      if (isGuest) {
+        localStorage.setItem(GUEST_KEY, token);
+      } else {
+        localStorage.removeItem(GUEST_KEY);
+      }
     }
     this.initFirestoreSync();
   }
 
   getGuestId(): string | null {
+    if (typeof window === 'undefined' || typeof localStorage === 'undefined') return null;
     return localStorage.getItem(GUEST_KEY);
   }
 
   clearToken() {
     this.token = null;
-    localStorage.removeItem(TOKEN_KEY);
-    sessionStorage.removeItem(TOKEN_KEY);
-    localStorage.removeItem(GUEST_KEY);
+    if (typeof window !== 'undefined' && typeof localStorage !== 'undefined') {
+      localStorage.removeItem(TOKEN_KEY);
+      if (typeof sessionStorage !== 'undefined') sessionStorage.removeItem(TOKEN_KEY);
+      localStorage.removeItem(GUEST_KEY);
+    }
     if (this.activeUnsubscribe) {
       this.activeUnsubscribe();
       this.activeUnsubscribe = null;
@@ -443,8 +450,8 @@ class ApiService {
         const data = userSnap.data();
         const profile: UserProfile = data.profile || getEmptyClientProfile('Guest User', 'guest');
         const stats: UserStats = data.stats || {
-          currentStreak: 1,
-          longestStreak: 1,
+          currentStreak: 0,
+          longestStreak: 0,
           mealsLoggedTotal: 0,
           uniqueFoodsCount: 0,
           weightLossKg: 0,
@@ -464,8 +471,8 @@ class ApiService {
         // Initialize doc in Firestore
         const defaultProf = getEmptyClientProfile(isGuest ? 'Guest User' : 'User', isGuest ? 'guest' : 'user');
         const defaultStats: UserStats = {
-          currentStreak: 1,
-          longestStreak: 1,
+          currentStreak: 0,
+          longestStreak: 0,
           mealsLoggedTotal: 0,
           uniqueFoodsCount: 0,
           weightLossKg: 0,
@@ -482,7 +489,13 @@ class ApiService {
           createdAt: Date.now(),
           updatedAt: Date.now()
         };
-        await safeSetDoc(userRef, newRecord);
+        // For guest accounts, avoid creating empty Firestore docs on page loads
+        if (!isGuest) {
+          await safeSetDoc(userRef, newRecord);
+        }
+        if (!this.localCache.users) this.localCache.users = {};
+        this.localCache.users[activeId] = newRecord;
+        saveLocalCache(this.localCache);
         return {
           userId: activeId,
           username: isGuest ? 'Guest User' : '',
@@ -505,8 +518,8 @@ class ApiService {
         isDev: false,
         profile: cachedProf,
         stats: {
-          currentStreak: 1,
-          longestStreak: 1,
+          currentStreak: 0,
+          longestStreak: 0,
           mealsLoggedTotal: 0,
           uniqueFoodsCount: 0,
           weightLossKg: 0,
@@ -539,8 +552,8 @@ class ApiService {
     const pwHash = hashClientPassword(password);
     const defaultProf = getEmptyClientProfile(cleanUsername, cleanUsername);
     const defaultStats: UserStats = {
-      currentStreak: 1,
-      longestStreak: 1,
+      currentStreak: 0,
+      longestStreak: 0,
       mealsLoggedTotal: 0,
       uniqueFoodsCount: 0,
       weightLossKg: 0,
@@ -637,8 +650,8 @@ class ApiService {
       isGuest: false,
       profile: getEmptyClientProfile(cleanUsername, cleanUsername),
       stats: {
-        currentStreak: 1,
-        longestStreak: 1,
+        currentStreak: 0,
+        longestStreak: 0,
         mealsLoggedTotal: 0,
         uniqueFoodsCount: 0,
         weightLossKg: 0,
@@ -679,8 +692,8 @@ class ApiService {
       isGuest: false,
       profile: getEmptyClientProfile(name, name || cleanEmail.split('@')[0]),
       stats: {
-        currentStreak: 1,
-        longestStreak: 1,
+        currentStreak: 0,
+        longestStreak: 0,
         mealsLoggedTotal: 0,
         uniqueFoodsCount: 0,
         weightLossKg: 0,
@@ -718,6 +731,133 @@ class ApiService {
     profile.dailyActivity = 'moderate';
     profile.goalSpeed = 'lose_normal';
 
+    const dailyMenus = [
+      {
+        b: { name: 'Greek Yogurt Bowl with Oats & Berries', cal: 360, c: 44, f: 7, p: 28 },
+        l: { name: 'Grilled Chicken Quinoa Salad', cal: 540, c: 48, f: 16, p: 46 },
+        d: { name: 'Baked Salmon with Roasted Asparagus & Rice', cal: 610, c: 52, f: 22, p: 45 },
+        s: { name: 'Apple Slices & Almond Butter', cal: 190, c: 22, f: 11, p: 4 }
+      },
+      {
+        b: { name: '2 Poached Eggs on Sourdough Toast', cal: 340, c: 30, f: 14, p: 20 },
+        l: { name: 'Turkey & Avocado Wholegrain Wrap', cal: 510, c: 46, f: 18, p: 38 },
+        d: { name: 'Lean Beef Stir-Fry with Broccoli & Jasmine Rice', cal: 630, c: 58, f: 19, p: 48 },
+        s: { name: 'Cottage Cheese with Pineapple', cal: 175, c: 16, f: 4, p: 20 }
+      },
+      {
+        b: { name: 'High-Protein Overnight Oats with Chia', cal: 390, c: 48, f: 9, p: 30 },
+        l: { name: 'Tuna & White Bean Mediterranean Salad', cal: 490, c: 40, f: 14, p: 44 },
+        d: { name: 'Roast Chicken Breast, Sweet Potato & Greens', cal: 580, c: 50, f: 15, p: 52 },
+        s: { name: 'Whey Protein Shake & Banana', cal: 230, c: 27, f: 2, p: 26 }
+      }
+    ];
+
+    const seededWeights: WeightRecord[] = [];
+    let seededMealsCount = 0;
+
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      const dateStr = formatLocalDate(d);
+      const menu = dailyMenus[i % dailyMenus.length];
+
+      const dayItems: FoodItem[] = [
+        {
+          id: `item_seed_b_${i}`,
+          userId,
+          date: dateStr,
+          mealType: 'breakfast',
+          name: menu.b.name,
+          calories: menu.b.cal,
+          carbs: menu.b.c,
+          fat: menu.b.f,
+          protein: menu.b.p,
+          serving: '1 serving',
+          source: 'manual',
+          createdAt: d.getTime()
+        },
+        {
+          id: `item_seed_l_${i}`,
+          userId,
+          date: dateStr,
+          mealType: 'lunch',
+          name: menu.l.name,
+          calories: menu.l.cal,
+          carbs: menu.l.c,
+          fat: menu.l.f,
+          protein: menu.l.p,
+          serving: '1 plate',
+          source: 'manual',
+          createdAt: d.getTime()
+        },
+        {
+          id: `item_seed_d_${i}`,
+          userId,
+          date: dateStr,
+          mealType: 'dinner',
+          name: menu.d.name,
+          calories: menu.d.cal,
+          carbs: menu.d.c,
+          fat: menu.d.f,
+          protein: menu.d.p,
+          serving: '1 plate',
+          source: 'manual',
+          createdAt: d.getTime()
+        },
+        {
+          id: `item_seed_s_${i}`,
+          userId,
+          date: dateStr,
+          mealType: 'snack',
+          name: menu.s.name,
+          calories: menu.s.cal,
+          carbs: menu.s.c,
+          fat: menu.s.f,
+          protein: menu.s.p,
+          serving: '1 portion',
+          source: 'manual',
+          createdAt: d.getTime()
+        }
+      ];
+
+      seededMealsCount += dayItems.length;
+      this.localCache.diary[dateStr] = dayItems;
+      safeSetDoc(doc(db, 'diaryEntries', `${userId}_${dateStr}`), {
+        userId,
+        date: dateStr,
+        items: dayItems,
+        updatedAt: d.getTime()
+      }).catch(() => {});
+
+      const weightVal = Math.round((78.5 - (6 - i) * 0.1) * 10) / 10;
+      const wDoc: WeightRecord = {
+        id: `wt_seed_${i}`,
+        userId,
+        date: dateStr,
+        weightKg: weightVal,
+        createdAt: d.getTime()
+      };
+      seededWeights.push(wDoc);
+      safeSetDoc(doc(db, 'weightEntries', `${userId}_${dateStr}`), wDoc).catch(() => {});
+
+      safeSetDoc(doc(db, 'waterEntries', `${userId}_${dateStr}`), {
+        userId,
+        date: dateStr,
+        glasses: 8,
+        ml: 2000,
+        updatedAt: d.getTime()
+      }).catch(() => {});
+    }
+
+    if (!this.localCache.weights) this.localCache.weights = {};
+    this.localCache.weights[userId] = seededWeights;
+    saveLocalCache(this.localCache);
+
+    // Compute stats from the actual 7 seeded days
+    const computedDays = 7;
+    const computedStreak = 7; // exactly 7 consecutive days ending today
+    const computedXp = seededMealsCount * 10 + seededWeights.length * 15 + computedStreak * 20;
+
     const userDoc = {
       userId,
       username: 'alex_m',
@@ -725,15 +865,17 @@ class ApiService {
       isGuest: false,
       profile,
       stats: {
-        currentStreak: 14,
-        longestStreak: 21,
-        mealsLoggedTotal: 48,
-        uniqueFoodsCount: 32,
-        weightLossKg: 2.5,
-        consistencyScore: 92,
-        averageDailyCalories: 2150
+        currentStreak: computedStreak,
+        longestStreak: computedStreak,
+        mealsLoggedTotal: seededMealsCount,
+        uniqueFoodsCount: 12,
+        weightLossKg: 0.6,
+        consistencyScore: 100,
+        averageDailyCalories: 1720,
+        totalXP: computedXp,
+        xp: computedXp
       },
-      createdAt: Date.now(),
+      createdAt: Date.now() - 7 * 86400000,
       updatedAt: Date.now()
     };
 
@@ -1230,29 +1372,230 @@ class ApiService {
     return { success: true };
   }
 
-  // Saved Foods, Recipes, Meal Templates
+  // Saved Foods & Saved Meals (Firestore-backed)
   async getSavedFoods(): Promise<{ foods: SavedFood[] }> {
     const userId = this.token || 'guest';
-    return { foods: this.localCache.savedFoods[userId] || [] };
-  }
-  async addSavedFood(food: Omit<SavedFood, 'id' | 'userId' | 'createdAt'>): Promise<SavedFood> {
-    const userId = this.token || 'guest';
-    const item: SavedFood = { ...food, id: `sf_${Date.now()}`, userId, createdAt: Date.now() };
-    const list = this.localCache.savedFoods[userId] || [];
-    this.localCache.savedFoods[userId] = [...list, item];
-    saveLocalCache(this.localCache);
     try {
-      await safeSetDoc(doc(db, 'savedFoods', `${userId}_${item.id}`), item);
-    } catch {}
-    return item;
+      const q = query(collection(db, 'savedFoods'), where('userId', '==', userId));
+      const snap = await getDocs(q);
+      if (!snap.empty) {
+        const foods: SavedFood[] = [];
+        snap.forEach((d) => {
+          const data = d.data();
+          foods.push({
+            id: d.id,
+            userId: data.userId || userId,
+            name: data.name,
+            calories: Number(data.kcal ?? data.calories ?? 0),
+            kcal: Number(data.kcal ?? data.calories ?? 0),
+            carbs: Number(data.carbs ?? 0),
+            fat: Number(data.fat ?? 0),
+            protein: Number(data.protein ?? 0),
+            fiber: Number(data.fiber ?? 0),
+            sugar: Number(data.sugar ?? 0),
+            sodium: Number(data.sodium ?? 0),
+            serving: data.serving || '1 portion',
+            lastLoggedAt: Number(data.lastLoggedAt || data.createdAt || Date.now()),
+            logCount: Number(data.logCount || 1),
+            createdAt: Number(data.createdAt || Date.now())
+          });
+        });
+        foods.sort((a, b) => (b.lastLoggedAt || 0) - (a.lastLoggedAt || 0));
+        if (!this.localCache.savedFoods) this.localCache.savedFoods = {};
+        this.localCache.savedFoods[userId] = foods;
+        saveLocalCache(this.localCache);
+        return { foods };
+      }
+    } catch (err) {
+      console.warn('Could not query Firestore savedFoods:', err);
+    }
+    const cached = (this.localCache.savedFoods && this.localCache.savedFoods[userId]) || [];
+    return { foods: cached };
   }
+
+  async recordSavedFood(food: {
+    name: string;
+    kcal: number;
+    protein: number;
+    carbs: number;
+    fat: number;
+    serving?: string;
+  }): Promise<SavedFood> {
+    const userId = this.token || 'guest';
+    const cleanName = food.name.trim();
+    if (!cleanName) throw new Error('Food name is required');
+    const docId = `${userId}_${cleanName.toLowerCase().replace(/[^a-z0-9]/g, '_')}`;
+    const foodRef = doc(db, 'savedFoods', docId);
+
+    let logCount = 1;
+    let existingCreatedAt = Date.now();
+    try {
+      const snap = await getDoc(foodRef);
+      if (snap.exists()) {
+        const existing = snap.data();
+        logCount = (Number(existing.logCount) || 1) + 1;
+        existingCreatedAt = Number(existing.createdAt) || Date.now();
+      } else {
+        const cached = (this.localCache.savedFoods && this.localCache.savedFoods[userId]) || [];
+        const match = cached.find((f) => f.name.toLowerCase() === cleanName.toLowerCase());
+        if (match) {
+          logCount = (Number(match.logCount) || 1) + 1;
+          existingCreatedAt = Number(match.createdAt) || Date.now();
+        }
+      }
+    } catch {}
+
+    const savedDoc: SavedFood = {
+      id: docId,
+      userId,
+      name: cleanName,
+      kcal: Math.round(food.kcal),
+      calories: Math.round(food.kcal),
+      protein: Math.round(food.protein * 10) / 10,
+      carbs: Math.round(food.carbs * 10) / 10,
+      fat: Math.round(food.fat * 10) / 10,
+      serving: food.serving || '1 portion',
+      lastLoggedAt: Date.now(),
+      logCount,
+      createdAt: existingCreatedAt
+    };
+
+    try {
+      await safeSetDoc(foodRef, savedDoc);
+    } catch (err) {
+      console.warn('Error saving to savedFoods collection:', err);
+    }
+
+    if (!this.localCache.savedFoods) this.localCache.savedFoods = {};
+    const existingList = this.localCache.savedFoods[userId] || [];
+    const filtered = existingList.filter((f) => f.name.toLowerCase() !== cleanName.toLowerCase());
+    this.localCache.savedFoods[userId] = [savedDoc, ...filtered];
+    saveLocalCache(this.localCache);
+
+    return savedDoc;
+  }
+
+  async addSavedFood(food: Omit<SavedFood, 'id' | 'userId' | 'createdAt'>): Promise<SavedFood> {
+    return this.recordSavedFood({
+      name: food.name,
+      kcal: food.kcal ?? food.calories ?? 0,
+      protein: food.protein ?? 0,
+      carbs: food.carbs ?? 0,
+      fat: food.fat ?? 0,
+      serving: food.serving
+    });
+  }
+
   async deleteSavedFood(id: string): Promise<{ success: boolean }> {
     const userId = this.token || 'guest';
     const list = this.localCache.savedFoods[userId] || [];
     this.localCache.savedFoods[userId] = list.filter((f) => f.id !== id);
     saveLocalCache(this.localCache);
     try {
-      await deleteDoc(doc(db, 'savedFoods', `${userId}_${id}`));
+      await deleteDoc(doc(db, 'savedFoods', id.includes('_') ? id : `${userId}_${id}`));
+    } catch {}
+    return { success: true };
+  }
+
+  async getSavedMeals(): Promise<{ meals: any[] }> {
+    const userId = this.token || 'guest';
+    try {
+      const q = query(collection(db, 'savedMeals'), where('userId', '==', userId));
+      const snap = await getDocs(q);
+      if (!snap.empty) {
+        const meals: any[] = [];
+        snap.forEach((d) => {
+          meals.push({ id: d.id, ...d.data() });
+        });
+        meals.sort((a, b) => Number(b.createdAt || b.lastLoggedAt || 0) - Number(a.createdAt || a.lastLoggedAt || 0));
+        if (!this.localCache.savedMeals) this.localCache.savedMeals = {};
+        this.localCache.savedMeals[userId] = meals;
+        saveLocalCache(this.localCache);
+        return { meals };
+      }
+    } catch (err) {
+      console.warn('Could not query Firestore savedMeals:', err);
+    }
+    const cached = (this.localCache.savedMeals && this.localCache.savedMeals[userId]) || (this.localCache.mealTemplates && this.localCache.mealTemplates[userId]) || [];
+    return { meals: cached };
+  }
+
+  async saveMeal(
+    mealName: string,
+    items: Array<{
+      name: string;
+      calories?: number;
+      kcal?: number;
+      protein: number;
+      carbs: number;
+      fat: number;
+      serving?: string;
+      mealType?: MealType;
+    }>
+  ): Promise<{ success: boolean; meal: any }> {
+    const userId = this.token || 'guest';
+    const mealId = `sm_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+    const cleanName = mealName.trim() || 'Saved Meal';
+
+    const normalizedItems = items.map((it) => ({
+      name: it.name,
+      calories: Math.round(Number(it.calories ?? it.kcal ?? 0)),
+      kcal: Math.round(Number(it.kcal ?? it.calories ?? 0)),
+      protein: Math.round(Number(it.protein || 0) * 10) / 10,
+      carbs: Math.round(Number(it.carbs || 0) * 10) / 10,
+      fat: Math.round(Number(it.fat || 0) * 10) / 10,
+      serving: it.serving || '1 portion',
+      mealType: it.mealType || 'breakfast'
+    }));
+
+    const totalCalories = normalizedItems.reduce((s, i) => s + (i.calories || 0), 0);
+    const totalProtein = Math.round(normalizedItems.reduce((s, i) => s + (i.protein || 0), 0) * 10) / 10;
+    const totalCarbs = Math.round(normalizedItems.reduce((s, i) => s + (i.carbs || 0), 0) * 10) / 10;
+    const totalFat = Math.round(normalizedItems.reduce((s, i) => s + (i.fat || 0), 0) * 10) / 10;
+
+    const mealDoc = {
+      id: mealId,
+      userId,
+      name: cleanName,
+      items: normalizedItems,
+      totalCalories,
+      totalProtein,
+      totalCarbs,
+      totalFat,
+      createdAt: Date.now(),
+      lastLoggedAt: Date.now()
+    };
+
+    try {
+      await safeSetDoc(doc(db, 'savedMeals', `${userId}_${mealId}`), mealDoc);
+    } catch (err) {
+      console.warn('Error saving to savedMeals collection:', err);
+    }
+
+    if (!this.localCache.savedMeals) this.localCache.savedMeals = {};
+    const existingList = this.localCache.savedMeals[userId] || [];
+    this.localCache.savedMeals[userId] = [mealDoc, ...existingList];
+
+    // Also mirror to mealTemplates for backward compatibility
+    if (!this.localCache.mealTemplates) this.localCache.mealTemplates = {};
+    const tmplList = this.localCache.mealTemplates[userId] || [];
+    this.localCache.mealTemplates[userId] = [mealDoc as any, ...tmplList];
+    saveLocalCache(this.localCache);
+
+    return { success: true, meal: mealDoc };
+  }
+
+  async deleteSavedMeal(mealId: string): Promise<{ success: boolean }> {
+    const userId = this.token || 'guest';
+    if (this.localCache.savedMeals && this.localCache.savedMeals[userId]) {
+      this.localCache.savedMeals[userId] = this.localCache.savedMeals[userId].filter((m) => m.id !== mealId);
+    }
+    if (this.localCache.mealTemplates && this.localCache.mealTemplates[userId]) {
+      this.localCache.mealTemplates[userId] = this.localCache.mealTemplates[userId].filter((m) => m.id !== mealId);
+    }
+    saveLocalCache(this.localCache);
+    try {
+      await deleteDoc(doc(db, 'savedMeals', mealId.includes('_') ? mealId : `${userId}_${mealId}`));
     } catch {}
     return { success: true };
   }
@@ -1398,10 +1741,42 @@ class ApiService {
   }
 
   async generatePlan(payload: any): Promise<{ success: boolean; plan: WeekPlan }> {
+    try {
+      const res = await fetch('/api/plan/generate', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(this.token ? { 'Authorization': `Bearer ${this.token}` } : {})
+        },
+        body: JSON.stringify(payload)
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && data.plan) {
+          const userId = this.token || 'guest';
+          this.localCache.plans[userId] = data.plan;
+          saveLocalCache(this.localCache);
+          return data;
+        }
+      }
+    } catch (err) {
+      console.warn('AI plan generation API failed, using fallback:', err);
+    }
+
     const targetCalories = Number(payload.targetCalories || 2000);
     const proteinTarget = Math.round(targetCalories * 0.3 / 4);
     const fatTarget = Math.round(targetCalories * 0.3 / 9);
     const carbsTarget = Math.round((targetCalories - (proteinTarget * 4 + fatTarget * 9)) / 4);
+
+    const restrictions = payload?.preferences?.restrictions || [];
+    const isVeg = restrictions.some((r: string) => r.toLowerCase().includes('vegetarian'));
+    const isVegan = restrictions.some((r: string) => r.toLowerCase().includes('vegan'));
+    const isPesc = restrictions.some((r: string) => r.toLowerCase().includes('pescatarian'));
+
+    let bName = 'Oatmeal & Protein Shake';
+    let bIng = ['Rolled Oats (80g)', 'Plant Protein Powder (30g)', 'Almond Milk (250ml)'];
+    let lName = isVegan ? 'Quinoa & Black Bean Buddha Bowl' : (isVeg ? 'Vegetarian Quinoa & Halloumi Salad' : (isPesc ? 'Grilled Salmon & Quinoa Bowl' : 'Grilled Chicken & Rice Bowl'));
+    let lIng = isVegan ? ['Quinoa (150g)', 'Black Beans (100g)', 'Avocado (50g)', 'Spinach (60g)'] : (isVeg ? ['Quinoa (150g)', 'Halloumi Cheese (100g)', 'Cucumber (80g)', 'Olive Oil (15ml)'] : (isPesc ? ['Atlantic Salmon (150g)', 'Quinoa (140g)', 'Asparagus (100g)'] : ['Chicken Breast (200g)', 'White Rice (150g)', 'Broccoli (100g)']));
 
     const dayNames = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
     const days = dayNames.map((name, i) => {
@@ -1415,39 +1790,74 @@ class ApiService {
         meals: [
           {
             mealType: 'breakfast' as MealType,
-            name: 'Oatmeal & Protein Shake',
+            name: bName,
             calories: Math.round(targetCalories * 0.25),
             protein: Math.round(proteinTarget * 0.3),
             carbs: Math.round(carbsTarget * 0.3),
             fat: Math.round(fatTarget * 0.2),
-            items: [{ name: 'Rolled Oats (80g)', calories: 300, protein: 10, carbs: 54, fat: 5, servingSize: 80, servingUnit: 'g' }]
+            prepTime: '10 min',
+            cookTime: '5 min',
+            totalTime: '15 min',
+            aisle: 'pantry',
+            ingredients: bIng,
+            instructions: [
+              'Prepare and measure all ingredients according to quantities.',
+              'Combine ingredients in a bowl or pan, cooking or blending as needed.',
+              'Serve warm and enjoy your nutritious breakfast!'
+            ]
           },
           {
             mealType: 'lunch' as MealType,
-            name: 'Grilled Chicken & Rice Bowl',
+            name: lName,
             calories: Math.round(targetCalories * 0.35),
             protein: Math.round(proteinTarget * 0.4),
             carbs: Math.round(carbsTarget * 0.4),
             fat: Math.round(fatTarget * 0.3),
-            items: [{ name: 'Chicken Breast (200g)', calories: 330, protein: 62, carbs: 0, fat: 7, servingSize: 200, servingUnit: 'g' }]
+            prepTime: '15 min',
+            cookTime: '20 min',
+            totalTime: '35 min',
+            aisle: 'produce',
+            ingredients: lIng,
+            instructions: [
+              'Prep and chop all fresh ingredients.',
+              'Cook primary protein/grains over medium heat until tender.',
+              'Assemble in a bowl, season to taste, and serve.'
+            ]
           },
           {
             mealType: 'dinner' as MealType,
-            name: 'Salmon with Sweet Potato & Veggies',
+            name: isVegan ? 'Lentil & Sweet Potato Curry' : (isVeg ? 'Chickpea & Spinach Coconut Curry' : 'Baked Salmon with Sweet Potato & Veggies'),
             calories: Math.round(targetCalories * 0.3),
             protein: Math.round(proteinTarget * 0.25),
             carbs: Math.round(carbsTarget * 0.25),
             fat: Math.round(fatTarget * 0.4),
-            items: [{ name: 'Atlantic Salmon (150g)', calories: 312, protein: 30, carbs: 0, fat: 20, servingSize: 150, servingUnit: 'g' }]
+            prepTime: '15 min',
+            cookTime: '25 min',
+            totalTime: '40 min',
+            aisle: 'produce',
+            ingredients: isVegan ? ['Red Lentils (100g)', 'Sweet Potato (150g)', 'Coconut Milk (100ml)', 'Spinach (50g)'] : (isVeg ? ['Chickpeas (150g)', 'Spinach (80g)', 'Coconut Milk (100ml)', 'Brown Rice (120g)'] : ['Atlantic Salmon (150g)', 'Sweet Potato (150g)', 'Broccoli (100g)']),
+            instructions: [
+              'Roast or simmer ingredients in a large pan until thoroughly cooked.',
+              'Season with herbs and spices of your choice.',
+              'Serve hot.'
+            ]
           },
           {
             mealType: 'snack' as MealType,
-            name: 'Greek Yogurt & Berries',
+            name: isVegan ? 'Almond Butter & Apple Slices' : 'Greek Yogurt & Berries',
             calories: Math.round(targetCalories * 0.1),
             protein: Math.round(proteinTarget * 0.05),
             carbs: Math.round(carbsTarget * 0.05),
             fat: Math.round(fatTarget * 0.1),
-            items: [{ name: 'Greek Yogurt 0% (150g)', calories: 90, protein: 15, carbs: 6, fat: 0, servingSize: 150, servingUnit: 'g' }]
+            prepTime: '5 min',
+            cookTime: '0 min',
+            totalTime: '5 min',
+            aisle: 'dairy',
+            ingredients: isVegan ? ['Apple (1 medium)', 'Almond Butter (30g)'] : ['Greek Yogurt 0% (150g)', 'Mixed Berries (80g)'],
+            instructions: [
+              'Portion ingredients into a bowl or plate.',
+              'Enjoy immediately.'
+            ]
           }
         ]
       };
@@ -1466,7 +1876,7 @@ class ApiService {
         carbsPct: 40
       },
       days: days as any,
-      weeklyStrategy: 'Balanced nutrition built around whole foods and your target calorie numbers.',
+      weeklyStrategy: 'Balanced nutrition tailored to your dietary preferences and target calories.',
       generatedAt: Date.now()
     };
 
@@ -1490,8 +1900,8 @@ class ApiService {
     return {
       profile: session.profile || getEmptyClientProfile('User', 'user'),
       stats: session.stats || {
-        currentStreak: 1,
-        longestStreak: 1,
+        currentStreak: 0,
+        longestStreak: 0,
         mealsLoggedTotal: 0,
         uniqueFoodsCount: 0,
         weightLossKg: 0,
@@ -1505,6 +1915,7 @@ class ApiService {
     const userId = this.token || 'guest';
     const current = await this.getProfile();
     const updatedProfile: UserProfile = { ...current.profile, ...updates };
+    console.log('TARGET WRITTEN:', updatedProfile.targetCalories);
 
     this.notifySaveStatus('saving');
     try {
@@ -2091,8 +2502,153 @@ class ApiService {
     return { success: true };
   }
 
+  async saveMealDirect(mealName: string, items: Array<{
+    name: string;
+    calories: number;
+    protein: number;
+    carbs: number;
+    fat: number;
+    serving?: string;
+    mealType?: MealType;
+  }>): Promise<{ success: boolean; template: MealTemplate }> {
+    const userId = this.token || 'guest';
+    const tmpl: MealTemplate = {
+      id: `tmpl_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      userId,
+      name: mealName.trim() || 'Saved Meal',
+      items: items.map((it) => ({
+        name: it.name,
+        calories: it.calories,
+        protein: it.protein,
+        carbs: it.carbs,
+        fat: it.fat,
+        serving: it.serving || '1 serving',
+        mealType: it.mealType || 'breakfast'
+      })),
+      createdAt: Date.now()
+    };
+    if (!this.localCache.mealTemplates) this.localCache.mealTemplates = {};
+    const list = this.localCache.mealTemplates[userId] || [];
+    this.localCache.mealTemplates[userId] = [...list, tmpl];
+    saveLocalCache(this.localCache);
+    try {
+      await safeSetDoc(doc(db, 'mealTemplates', `${userId}_${tmpl.id}`), tmpl);
+    } catch {}
+    return { success: true, template: tmpl };
+  }
+
+  async pruneUnusedGuestAccounts(daysThreshold: number = 3): Promise<{
+    examinedCount: number;
+    deletedCount: number;
+    deletedIds: string[];
+    keptCount: number;
+    pendingFutureCount: number;
+    summary: string;
+  }> {
+    const cutoffMs = daysThreshold * 24 * 60 * 60 * 1000;
+    const now = Date.now();
+    const cutoffTime = now - cutoffMs;
+
+    const usersRef = collection(db, 'users');
+    const snap = await getDocs(usersRef);
+
+    let examinedCount = 0;
+    let deletedCount = 0;
+    const deletedIds: string[] = [];
+    let keptCount = 0;
+    let pendingFutureCount = 0;
+
+    for (const docSnap of snap.docs) {
+      const gid = docSnap.id;
+      const data = docSnap.data();
+
+      // Only evaluate guest accounts
+      if (!gid.startsWith('guest_') && !data.isGuest) continue;
+
+      examinedCount++;
+      const createdAt = Number(data.createdAt) || 0;
+      const ageMs = now - createdAt;
+
+      // Check if account has any activity
+      let hasFoods = false;
+      try {
+        const diarySnap = await getDocs(query(collection(db, 'diaryEntries'), where('userId', '==', gid)));
+        diarySnap.forEach((d) => {
+          const it = d.data()?.items;
+          if (Array.isArray(it) && it.length > 0) hasFoods = true;
+        });
+      } catch {}
+
+      let hasWeights = false;
+      try {
+        const weightSnap = await getDocs(query(collection(db, 'weightEntries'), where('userId', '==', gid)));
+        hasWeights = weightSnap.size > 0;
+      } catch {}
+
+      let hasWater = false;
+      try {
+        const waterSnap = await getDocs(query(collection(db, 'waterEntries'), where('userId', '==', gid)));
+        hasWater = waterSnap.size > 0;
+      } catch {}
+
+      const prof = data.profile || {};
+      const isCustomizedProfile = Boolean(
+        (prof.age && prof.age > 0) ||
+        (prof.heightCm && prof.heightCm > 0) ||
+        (prof.currentWeightKg && prof.currentWeightKg > 0) ||
+        (prof.goalWeightKg && prof.goalWeightKg > 0) ||
+        (prof.name && prof.name !== 'Guest User')
+      );
+
+      const hasActivity = hasFoods || hasWeights || hasWater || isCustomizedProfile;
+
+      if (hasActivity) {
+        keptCount++;
+        continue;
+      }
+
+      // If unused but younger than 3 days, wait until 3 days have passed
+      if (ageMs < cutoffMs) {
+        pendingFutureCount++;
+        continue;
+      }
+
+      // Unused and older than 3 days -> delete safely
+      try {
+        await deleteDoc(doc(db, 'users', gid));
+        deletedCount++;
+        deletedIds.push(gid);
+      } catch (err) {
+        console.warn(`Failed to delete unused guest ${gid}:`, err);
+      }
+    }
+
+    const summary = deletedCount > 0
+      ? `Deleted ${deletedCount} unused guest account(s) older than ${daysThreshold} days. Kept ${keptCount} active accounts. ${pendingFutureCount} accounts are under ${daysThreshold} days old and waiting.`
+      : `No accounts eligible for deletion yet. ${pendingFutureCount} empty guest account(s) are currently under ${daysThreshold} days old and waiting. ${keptCount} active account(s) protected.`;
+
+    return {
+      examinedCount,
+      deletedCount,
+      deletedIds,
+      keptCount,
+      pendingFutureCount,
+      summary
+    };
+  }
+
   async devSeedDemoAccount(): Promise<any> {
-    return this.startDemoMode();
+    const res = await this.startDemoMode();
+    return {
+      email: res.email || 'demo@forkcount.app',
+      password: '(Demo Mode - One-click session)',
+      daysLogged: 7,
+      mealsLogged: 28,
+      exercisesLogged: 4,
+      weightEntries: 7,
+      waterGlassesTotal: 56,
+      streak: 7
+    };
   }
   async devGetRecentErrors(): Promise<any> {
     return { errors: [] };
@@ -2194,7 +2750,7 @@ class ApiService {
 
       const targetUserId = foundUserDoc.userId || foundUserDoc.id;
 
-      // 2. Query diary entries from 'diaryEntries'
+      // 2. Query diary entries strictly for targetUserId
       let diaryDocs: any[] = [];
       try {
         const diaryQ = query(collection(db, 'diaryEntries'), where('userId', '==', targetUserId));
@@ -2204,15 +2760,15 @@ class ApiService {
         console.warn('Firestore diaryEntries query error:', err);
       }
 
-      if (diaryDocs.length === 0 && this.localCache.diary) {
+      if (diaryDocs.length === 0 && this.localCache.diary && this.token === targetUserId) {
         for (const [dDate, items] of Object.entries(this.localCache.diary)) {
           if (Array.isArray(items) && items.length > 0) {
-            diaryDocs.push({ date: dDate, items });
+            diaryDocs.push({ date: dDate, items, userId: targetUserId });
           }
         }
       }
 
-      // 3. Query weight entries from 'weightEntries'
+      // 3. Query weight entries strictly for targetUserId
       let weightDocs: any[] = [];
       try {
         const weightsQ = query(collection(db, 'weightEntries'), where('userId', '==', targetUserId));
@@ -2226,20 +2782,81 @@ class ApiService {
         weightDocs = this.localCache.weights[targetUserId];
       }
 
+      // 4. Query water entries strictly for targetUserId
+      let waterDocs: any[] = [];
+      try {
+        const waterQ = query(collection(db, 'waterEntries'), where('userId', '==', targetUserId));
+        const waterSnap = await getDocs(waterQ);
+        waterSnap.forEach((d) => waterDocs.push({ id: d.id, ...d.data() }));
+      } catch (err) {
+        console.warn('Firestore waterEntries query error:', err);
+      }
+
       // Log immediately after query returns (Requirement 3)
       console.log('The full user document object:', foundUserDoc);
       console.log('The diary entries result:', diaryDocs);
       console.log('The weights result:', weightDocs);
+      console.log('The water entries result:', waterDocs);
 
-      // Compute statistics
+      // Compute statistics directly from actual records
       const distinctDays = new Set<string>();
       let totalMealsCount = 0;
       for (const d of diaryDocs) {
-        if (d.date) distinctDays.add(d.date);
-        if (Array.isArray(d.items)) {
+        if (d.date && Array.isArray(d.items) && d.items.length > 0) {
+          distinctDays.add(d.date);
           totalMealsCount += d.items.length;
         }
       }
+      const sortedDistinctDates = Array.from(distinctDays).sort();
+
+      // Real Streak Calculation: consecutive days (ending today or yesterday) where this user has at least one diary entry
+      const now = new Date();
+      const formatYMD = (d: Date) => {
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${y}-${m}-${day}`;
+      };
+      const todayStr = formatYMD(now);
+      const yesterday = new Date(now);
+      yesterday.setDate(yesterday.getDate() - 1);
+      const yesterdayStr = formatYMD(yesterday);
+
+      let computedStreak = 0;
+      let streakExplanation = '';
+      const consecutiveDatesFound: string[] = [];
+
+      let checkDate: Date | null = null;
+      let startAnchor = '';
+      if (distinctDays.has(todayStr)) {
+        checkDate = new Date(now);
+        startAnchor = `today (${todayStr})`;
+      } else if (distinctDays.has(yesterdayStr)) {
+        checkDate = new Date(yesterday);
+        startAnchor = `yesterday (${yesterdayStr})`;
+      }
+
+      if (!checkDate) {
+        computedStreak = 0;
+        streakExplanation = `0 consecutive days (no diary entries on today [${todayStr}] or yesterday [${yesterdayStr}]). Distinct logged dates: [${sortedDistinctDates.join(', ') || 'none'}].`;
+      } else {
+        while (checkDate) {
+          const curStr = formatYMD(checkDate);
+          if (distinctDays.has(curStr)) {
+            computedStreak++;
+            consecutiveDatesFound.push(curStr);
+            checkDate.setDate(checkDate.getDate() - 1);
+          } else {
+            break;
+          }
+        }
+        streakExplanation = `${computedStreak} consecutive day${computedStreak === 1 ? '' : 's'} ending ${startAnchor}: [${consecutiveDatesFound.join(', ')}]`;
+      }
+
+      // Real XP Calculation: computed from actual user activities
+      const computedXP = totalMealsCount * 10 + weightDocs.length * 15 + computedStreak * 20;
+      const xpExplanation = `${totalMealsCount} meals × 10 XP + ${weightDocs.length} weights × 15 XP + ${computedStreak} streak × 20 XP = ${computedXP} XP`;
+      const daysExplanation = `${distinctDays.size} distinct calendar dates with meals logged: [${sortedDistinctDates.join(', ') || 'none'}]`;
 
       const profile = foundUserDoc.profile || {};
       const stats = foundUserDoc.stats || {};
@@ -2250,10 +2867,23 @@ class ApiService {
         foundUserDoc.updatedAt ||
         foundUserDoc.createdAt;
 
-      const totalXP =
-        stats.totalXP ||
-        stats.xp ||
-        totalMealsCount * 10 + weightDocs.length * 15 + (stats.currentStreak || 1) * 20;
+      const debugData = {
+        userDocument: foundUserDoc,
+        diaryEntriesCount: diaryDocs.length,
+        distinctDates: sortedDistinctDates,
+        totalMealsCount,
+        weightEntriesCount: weightDocs.length,
+        waterEntriesCount: waterDocs.length,
+        computedStreak,
+        streakExplanation,
+        computedXP,
+        xpExplanation,
+        computedDaysLogged: distinctDays.size,
+        daysExplanation,
+        rawDiaryDocs: diaryDocs,
+        rawWeightDocs: weightDocs,
+        rawWaterDocs: waterDocs
+      };
 
       const accountData = {
         userId: targetUserId,
@@ -2272,13 +2902,15 @@ class ApiService {
         meals: totalMealsCount,
         weightEntries: weightDocs.length,
         weights: weightDocs.length,
-        currentStreak: stats.currentStreak || (distinctDays.size > 0 ? 1 : 0),
-        streak: stats.currentStreak || (distinctDays.size > 0 ? 1 : 0),
-        totalXP,
-        totalXp: totalXP,
-        xp: totalXP,
+        waterEntries: waterDocs.length,
+        currentStreak: computedStreak,
+        streak: computedStreak,
+        totalXP: computedXP,
+        totalXp: computedXP,
+        xp: computedXP,
         profile,
-        stats
+        stats,
+        debug: debugData
       };
 
       return {

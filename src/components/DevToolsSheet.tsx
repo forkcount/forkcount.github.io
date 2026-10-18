@@ -15,7 +15,9 @@ import {
   KeyRound,
   Copy,
   Check,
-  Users
+  Users,
+  Code,
+  Database
 } from 'lucide-react';
 import { doc, setDoc, getDocs, collection } from 'firebase/firestore';
 import { db } from '../firebase.js';
@@ -81,12 +83,17 @@ export const DevToolsSheet: React.FC<DevToolsSheetProps> = ({
   const [isLoadingReports, setIsLoadingReports] = useState(false);
   const [moderationNotice, setModerationNotice] = useState<string | null>(null);
 
+  // Guest retention & pruning state
+  const [isPruningGuests, setIsPruningGuests] = useState(false);
+  const [pruningResult, setPruningResult] = useState<string | null>(null);
+
   // 3. Account Inspector & Manual Code state
   const [inspectEmailInput, setInspectEmailInput] = useState('');
   const [isInspecting, setIsInspecting] = useState(false);
   const [inspectedAccount, setInspectedAccount] = useState<any | null>(null);
   const [inspectMessage, setInspectMessage] = useState<string | null>(null);
   const [isSendingManualCode, setIsSendingManualCode] = useState(false);
+  const [showInspectorDebug, setShowInspectorDebug] = useState(false);
 
   // 4. Send Test Email state
   const [testEmailRecipient, setTestEmailRecipient] = useState('');
@@ -245,6 +252,19 @@ export const DevToolsSheet: React.FC<DevToolsSheetProps> = ({
       setDemoSeedError(err?.message || 'Failed to seed demo account.');
     } finally {
       setIsSeedingDemo(false);
+    }
+  };
+
+  const handlePruneGuests = async (days: number = 3) => {
+    setIsPruningGuests(true);
+    setPruningResult(null);
+    try {
+      const res = await api.pruneUnusedGuestAccounts(days);
+      setPruningResult(res.summary);
+    } catch (err: any) {
+      setPruningResult(err?.message || 'Failed to check or prune accounts.');
+    } finally {
+      setIsPruningGuests(false);
     }
   };
 
@@ -897,6 +917,127 @@ export const DevToolsSheet: React.FC<DevToolsSheetProps> = ({
                     return `${days} ${days === 1 ? 'day' : 'days'} logged · ${meals} ${meals === 1 ? 'meal' : 'meals'} · ${weights} ${weights === 1 ? 'weight' : 'weights'} · ${streak} day streak · ${xp} XP`;
                   })()}
                 </div>
+
+                {/* Debug Button to inspect Raw Firestore data & computations side by side */}
+                <div className="pt-2 border-t border-zinc-900 flex items-center justify-between">
+                  <button
+                    type="button"
+                    onClick={() => setShowInspectorDebug(!showInspectorDebug)}
+                    className="px-2.5 py-1.5 bg-zinc-900 hover:bg-zinc-850 border border-zinc-750 text-teal-300 font-sans font-medium rounded-lg text-[11px] flex items-center gap-1.5 transition-colors"
+                  >
+                    <Code className="w-3.5 h-3.5 text-teal-400" />
+                    <span>{showInspectorDebug ? 'Hide Raw Firestore Data' : 'Debug: Compare Raw Data & Calculations'}</span>
+                  </button>
+                  <span className="text-[10px] text-zinc-500 font-sans">
+                    {showInspectorDebug ? 'Showing live comparison' : 'Click to inspect raw documents'}
+                  </span>
+                </div>
+
+                {showInspectorDebug && inspectedAccount.debug && (
+                  <div className="mt-3 pt-3 border-t border-zinc-800 space-y-3 font-sans text-xs">
+                    <div className="flex items-center gap-1.5 text-teal-400 font-bold">
+                      <Database className="w-3.5 h-3.5" />
+                      <span>Raw Firestore Data &amp; Calculation Breakdown</span>
+                    </div>
+
+                    {/* Side-by-Side Comparison */}
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-[11px] border-collapse">
+                        <thead>
+                          <tr className="border-b border-zinc-800 text-zinc-400 text-left">
+                            <th className="py-1 px-2 font-semibold">Metric</th>
+                            <th className="py-1 px-2 font-semibold text-zinc-200">Displayed Value</th>
+                            <th className="py-1 px-2 font-semibold text-teal-300">Raw Data &amp; Calculation Formula</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-zinc-850 text-zinc-300">
+                          <tr>
+                            <td className="py-1.5 px-2 font-medium text-zinc-400">Days Logged</td>
+                            <td className="py-1.5 px-2 font-mono font-bold text-zinc-100">
+                              {inspectedAccount.daysLogged} days
+                            </td>
+                            <td className="py-1.5 px-2 font-mono text-[10px] text-zinc-400">
+                              {inspectedAccount.debug.daysExplanation}
+                            </td>
+                          </tr>
+                          <tr>
+                            <td className="py-1.5 px-2 font-medium text-zinc-400">Meals Logged</td>
+                            <td className="py-1.5 px-2 font-mono font-bold text-zinc-100">
+                              {inspectedAccount.mealsLogged} meals
+                            </td>
+                            <td className="py-1.5 px-2 font-mono text-[10px] text-zinc-400">
+                              {inspectedAccount.debug.totalMealsCount} meal items across {inspectedAccount.debug.diaryEntriesCount} diaryEntries documents
+                            </td>
+                          </tr>
+                          <tr>
+                            <td className="py-1.5 px-2 font-medium text-zinc-400">Weight Entries</td>
+                            <td className="py-1.5 px-2 font-mono font-bold text-zinc-100">
+                              {inspectedAccount.weightEntries} weights
+                            </td>
+                            <td className="py-1.5 px-2 font-mono text-[10px] text-zinc-400">
+                              {inspectedAccount.debug.weightEntriesCount} documents in weightEntries collection
+                            </td>
+                          </tr>
+                          <tr>
+                            <td className="py-1.5 px-2 font-medium text-zinc-400">Water Entries</td>
+                            <td className="py-1.5 px-2 font-mono font-bold text-zinc-100">
+                              {inspectedAccount.waterEntries || 0} water docs
+                            </td>
+                            <td className="py-1.5 px-2 font-mono text-[10px] text-zinc-400">
+                              {inspectedAccount.debug.waterEntriesCount} documents in waterEntries collection
+                            </td>
+                          </tr>
+                          <tr>
+                            <td className="py-1.5 px-2 font-medium text-zinc-400">Streak</td>
+                            <td className="py-1.5 px-2 font-mono font-bold text-teal-300">
+                              {inspectedAccount.currentStreak}d
+                            </td>
+                            <td className="py-1.5 px-2 font-mono text-[10px] text-zinc-400">
+                              {inspectedAccount.debug.streakExplanation}
+                            </td>
+                          </tr>
+                          <tr>
+                            <td className="py-1.5 px-2 font-medium text-zinc-400">XP</td>
+                            <td className="py-1.5 px-2 font-mono font-bold text-teal-300">
+                              {inspectedAccount.totalXP} XP
+                            </td>
+                            <td className="py-1.5 px-2 font-mono text-[10px] text-zinc-400">
+                              {inspectedAccount.debug.xpExplanation}
+                            </td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+
+                    {/* Distinct Dates List */}
+                    <div className="bg-zinc-900/60 p-2.5 rounded-lg border border-zinc-800 space-y-1">
+                      <div className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">
+                        Distinct Diary Dates ({inspectedAccount.debug.distinctDates.length}):
+                      </div>
+                      <div className="text-[10px] font-mono text-zinc-300 flex flex-wrap gap-1">
+                        {inspectedAccount.debug.distinctDates.length > 0 ? (
+                          inspectedAccount.debug.distinctDates.map((dateStr: string) => (
+                            <span key={dateStr} className="px-1.5 py-0.5 rounded bg-zinc-950 border border-zinc-800 text-teal-300">
+                              {dateStr}
+                            </span>
+                          ))
+                        ) : (
+                          <span className="text-zinc-500 italic">No diary entries found for this user</span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Raw User Document */}
+                    <div className="space-y-1">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">
+                        Raw User Document (users/{inspectedAccount.userId}):
+                      </span>
+                      <pre className="p-2 rounded-lg bg-black/70 border border-zinc-850 text-[10px] font-mono text-zinc-300 overflow-x-auto max-h-40 leading-tight">
+                        {JSON.stringify(inspectedAccount.debug.userDocument, null, 2)}
+                      </pre>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>

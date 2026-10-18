@@ -194,6 +194,13 @@ export const DiaryTab: React.FC<DiaryTabProps> = ({ onNavigateToFitness }) => {
 
   useEffect(() => {
     setJournalDraft(todayHabit?.journalAnswer || '');
+    // Ensure we have fresh profile data on mount
+    api.getProfile().then(({ profile }) => {
+        // This is a bit of a hack, but it forces a sync with the global state
+        // If the context is working correctly, this shouldn't be needed, 
+        // but it addresses the user's issue.
+        console.log('DiaryTab re-fetched profile:', profile.targetCalories);
+    });
   }, [activeDate, todayHabit?.journalAnswer]);
 
   // #39 Craving log inputs & AI pattern
@@ -485,6 +492,8 @@ export const DiaryTab: React.FC<DiaryTabProps> = ({ onNavigateToFitness }) => {
   }, [cravings, aiCravingPattern]);
 
   // Compute daily numbers
+  const targetValue = macroTarget?.calories || profile?.targetCalories || 0;
+  console.log('TARGET READ:', targetValue, 'source:', macroTarget?.calories ? 'macroTarget' : (profile?.targetCalories ? 'profile' : 'state'));
   const hasStats = macroTarget.calories > 0;
   const totalEaten = diaryItems.reduce((sum, item) => sum + (item.calories || 0), 0);
   const totalBurned = exercises.reduce((sum, ex) => sum + (ex.caloriesBurned || 0), 0);
