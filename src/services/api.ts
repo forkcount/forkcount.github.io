@@ -1,18 +1,4 @@
-import {
-  doc,
-  getDoc,
-  getDocs,
-  collection,
-  query,
-  where,
-  onSnapshot
-} from 'firebase/firestore';
-import {
-  setDoc,
-  updateDoc,
-  deleteDoc
-} from './safeFirestore.js';
-import { db, auth, handleFirestoreError, OperationType } from '../firebase.js';
+import { supabase } from './supabase.js';
 import type {
   FoodItem,
   ExerciseItem,
@@ -47,16 +33,15 @@ const USER_EMAIL_KEY = 'forkcount_user_email';
 const OFFLINE_CACHE_KEY = 'forkcount_local_cache_v2';
 export const DEV_DEVICE_KEY = 'forkcount_dev_device';
 
-function cleanForFirestore(obj: any): any {
-  if (Array.isArray(obj)) return obj.map(cleanForFirestore);
+function cleanUndefinedForSupabase(obj: any): any {
+  if (obj === undefined) return null;
+  if (Array.isArray(obj)) return obj.map(cleanUndefinedForSupabase);
   if (obj instanceof Date) return obj;
   if (obj && typeof obj === 'object') {
     const out: any = {};
     for (const k in obj) {
       if (Object.prototype.hasOwnProperty.call(obj, k)) {
-        if (obj[k] !== undefined) {
-          out[k] = cleanForFirestore(obj[k]);
-        }
+        out[k] = cleanUndefinedForSupabase(obj[k]);
       }
     }
     return out;
@@ -64,8 +49,29 @@ function cleanForFirestore(obj: any): any {
   return obj;
 }
 
-async function safeSetDoc(ref: any, data: any, options?: any) {
-  return setDoc(ref, cleanForFirestore(data), options);
+async function safeUpsert(table: string, data: any) {
+  try {
+    const cleaned = cleanUndefinedForSupabase(data);
+    const { error } = await supabase.from(table).upsert(cleaned);
+    if (error) {
+      console.warn(`Supabase upsert warning on ${table}:`, error.message);
+    }
+    return cleaned;
+  } catch (err) {
+    console.warn(`Supabase upsert exception on ${table}:`, err);
+    return data;
+  }
+}
+
+async function safeDelete(table: string, id: string) {
+  try {
+    const { error } = await supabase.from(table).delete().eq('id', id);
+    if (error) {
+      console.warn(`Supabase delete warning on ${table}:`, error.message);
+    }
+  } catch (err) {
+    console.warn(`Supabase delete exception on ${table}:`, err);
+  }
 }
 
 function getDeviceMetadata() {
@@ -247,7 +253,7 @@ class ApiService {
         localStorage.removeItem(GUEST_KEY);
       }
     }
-    this.initFirestoreSync();
+    this.initRealtimeSync();
   }
 
   getGuestId(): string | null {
@@ -362,10 +368,55 @@ class ApiService {
     });
   }
 
-  async requestPasswordReset(_email: string): Promise<{ sent: boolean; message: string; resendCooldownSeconds: number }> {
+  async requestPasswordReset(identifier: string): Promise<{ sent: boolean; message: string; resendCooldownSeconds: number }> {
+    const rawInput = identifier.trim();
+    const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(rawInput);
+    let targetEmail = rawInput.toLowerCase();
+    let profileData: any = null;
+
+    if (isEmail) {
+      try {
+        const { data: prof } = await supabase
+          .from('profiles')
+          .select('email, signup_method')
+          .eq('email', targetEmail)
+          .maybeSingle();
+        profileData = prof;
+      } catch {}
+    } else {
+      const cleanUsername = rawInput.toLowerCase().replace(/^@/, '');
+      try {
+        const { data: prof, error } = await supabase
+          .from('profiles')
+          .select('email, signup_method')
+          .eq('username', cleanUsername)
+          .maybeSingle();
+        if (error || !prof || !prof.email) {
+          throw new Error('Username not found.');
+        }
+        profileData = prof;
+        targetEmail = prof.email;
+      } catch (err: any) {
+        if (err.message) throw err;
+        throw new Error('Username not found.');
+      }
+    }
+
+    if (profileData && (profileData.signup_method === 'google' || profileData.signup_method === 'facebook')) {
+      throw new Error("This account uses Google/Facebook login. There's no password to reset.");
+    }
+
+    const { error } = await supabase.auth.resetPasswordForEmail(targetEmail, {
+      redirectTo: typeof window !== 'undefined' ? `${window.location.origin}/?resetToken=true` : undefined
+    });
+
+    if (error) {
+      throw error;
+    }
+
     return {
       sent: true,
-      message: 'Password reset link sent to your email.',
+      message: `Password reset link sent to ${targetEmail}.`,
       resendCooldownSeconds: 30
     };
   }
@@ -379,7 +430,7 @@ class ApiService {
     return this.login(email, newPassword, rememberMe);
   }
 
-  private initFirestoreSync() {
+  private initRealtimeSync() {
     if (this.activeUnsubscribe) {
       this.activeUnsubscribe();
       this.activeUnsubscribe = null;
@@ -388,15 +439,15 @@ class ApiService {
     if (!userId || userId.startsWith('guest_')) return;
 
     try {
-      this.activeUnsubscribe = onSnapshot(
-        doc(db, 'users', userId),
-        (_snapshot) => {
+      const channel = supabase
+        .channel('public:users')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles', filter: `id=eq.${userId}` }, () => {
           this.triggerSync();
-        },
-        (error) => {
-          console.warn('Firestore onSnapshot sync notice:', error.message);
-        }
-      );
+        })
+        .subscribe();
+      this.activeUnsubscribe = () => {
+        supabase.removeChannel(channel);
+      };
     } catch {
       // Offline fallback
     }
@@ -408,6 +459,17 @@ class ApiService {
     devAccountExists?: boolean;
     userId?: string;
   }> {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+        this.setToken(session.user.id, false);
+        return {
+          hasValidToken: true,
+          userId: session.user.id
+        };
+      }
+    } catch {}
+
     const token = this.getToken();
     const isGuest = !token || token.startsWith('guest_');
     if (!isGuest && token) {
@@ -430,8 +492,19 @@ class ApiService {
     isDev?: boolean;
     profile?: UserProfile;
     stats?: UserStats;
+    needsUsername?: boolean;
   }> {
     let activeId = this.token || this.getGuestId();
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+        activeId = session.user.id;
+        this.setToken(activeId, false);
+      }
+    } catch (err) {
+      console.warn('Supabase auth session check notice:', err);
+    }
 
     if (!activeId) {
       // Create fresh guest session
@@ -441,15 +514,54 @@ class ApiService {
 
     const isGuest = activeId.startsWith('guest_');
 
-    // Try reading from Firestore
+    // Try reading from Supabase profiles
     try {
-      const userRef = doc(db, 'users', activeId);
-      const userSnap = await getDoc(userRef);
+      const { data: userProfile, error } = await supabase.from('profiles').select('*').eq('id', activeId).maybeSingle();
 
-      if (userSnap.exists()) {
-        const data = userSnap.data();
-        const profile: UserProfile = data.profile || getEmptyClientProfile('Guest User', 'guest');
-        const stats: UserStats = data.stats || {
+      if (!isGuest && (!userProfile || !userProfile.username)) {
+        // Needs username selection
+        const { data: { session } } = await supabase.auth.getSession();
+        return {
+          userId: activeId,
+          username: '',
+          email: session?.user?.email || '',
+          isGuest: false,
+          isDev: false,
+          needsUsername: true,
+          profile: getEmptyClientProfile('User', ''),
+          stats: {
+            currentStreak: 0,
+            longestStreak: 0,
+            mealsLoggedTotal: 0,
+            uniqueFoodsCount: 0,
+            weightLossKg: 0,
+            consistencyScore: 100,
+            averageDailyCalories: 0
+          }
+        };
+      }
+
+      if (!error && userProfile) {
+        const cachedUser = this.localCache.users?.[activeId];
+        const profile: UserProfile = {
+          ...getEmptyClientProfile(userProfile.name || userProfile.username || 'User', userProfile.username || 'user'),
+          ...(cachedUser?.profile || {}),
+          age: userProfile.age ?? cachedUser?.profile?.age ?? 0,
+          gender: userProfile.gender ?? cachedUser?.profile?.gender ?? 'unspecified',
+          heightCm: Number(userProfile.height_cm ?? cachedUser?.profile?.heightCm ?? 0),
+          currentWeightKg: Number(userProfile.current_weight_kg ?? cachedUser?.profile?.currentWeightKg ?? 0),
+          goalWeightKg: Number(userProfile.goal_weight_kg ?? cachedUser?.profile?.goalWeightKg ?? 0),
+          dailyActivity: userProfile.activity_level ?? cachedUser?.profile?.dailyActivity ?? 'moderate',
+          goalSpeed: userProfile.goal ?? cachedUser?.profile?.goalSpeed ?? 'maintain',
+          targetCalories: Number(userProfile.target_calories ?? cachedUser?.profile?.targetCalories ?? 0),
+          restrictions: userProfile.restrictions ?? cachedUser?.profile?.restrictions ?? [],
+          macroTarget: userProfile.macro_target ?? cachedUser?.profile?.macroTarget ?? undefined,
+          name: userProfile.name || userProfile.username || 'User',
+          username: userProfile.username || '',
+          email: userProfile.email || cachedUser?.email || '',
+          signup_method: userProfile.signup_method
+        };
+        const stats: UserStats = cachedUser?.stats || {
           currentStreak: 0,
           longestStreak: 0,
           mealsLoggedTotal: 0,
@@ -460,17 +572,17 @@ class ApiService {
         };
         return {
           userId: activeId,
-          username: data.username || profile.username || (isGuest ? 'Guest User' : ''),
-          email: data.email || (isGuest ? '' : data.username),
+          username: userProfile.username || (isGuest ? 'Guest User' : ''),
+          email: userProfile.email || (isGuest ? '' : `${userProfile.username}@forkcount.app`),
           isGuest,
-          isDev: Boolean(data.isDev || profile.isDev),
+          isDev: Boolean(profile.isDev),
           profile,
           stats
         };
       } else {
-        // Initialize doc in Firestore
-        const defaultProf = getEmptyClientProfile(isGuest ? 'Guest User' : 'User', isGuest ? 'guest' : 'user');
-        const defaultStats: UserStats = {
+        const cachedUser = this.localCache.users?.[activeId];
+        const defaultProf = cachedUser?.profile || getEmptyClientProfile(isGuest ? 'Guest User' : 'User', isGuest ? 'guest' : 'user');
+        const defaultStats: UserStats = cachedUser?.stats || {
           currentStreak: 0,
           longestStreak: 0,
           mealsLoggedTotal: 0,
@@ -481,35 +593,40 @@ class ApiService {
         };
         const newRecord = {
           userId: activeId,
-          username: isGuest ? 'Guest User' : '',
-          email: '',
+          username: isGuest ? 'Guest User' : (cachedUser?.username || ''),
+          email: cachedUser?.email || '',
           isGuest,
           profile: defaultProf,
           stats: defaultStats,
           createdAt: Date.now(),
           updatedAt: Date.now()
         };
-        // For guest accounts, avoid creating empty Firestore docs on page loads
-        if (!isGuest) {
-          await safeSetDoc(userRef, newRecord);
+        if (!isGuest && newRecord.username) {
+          safeUpsert('profiles', {
+            id: activeId,
+            username: newRecord.username,
+            name: defaultProf.name || newRecord.username,
+            email: newRecord.email,
+            target_calories: defaultProf.targetCalories || 2000,
+            updated_at: new Date().toISOString()
+          });
         }
         if (!this.localCache.users) this.localCache.users = {};
         this.localCache.users[activeId] = newRecord;
         saveLocalCache(this.localCache);
         return {
           userId: activeId,
-          username: isGuest ? 'Guest User' : '',
-          email: '',
+          username: newRecord.username,
+          email: newRecord.email,
           isGuest,
-          isDev: false,
+          isDev: Boolean(defaultProf.isDev),
           profile: defaultProf,
           stats: defaultStats
         };
       }
     } catch (err) {
-      console.warn('Firestore offline/fallback on initSession:', err);
-      // Local fallback
-      const cachedProf = this.localCache.users[activeId]?.profile || getEmptyClientProfile('Guest User', 'guest');
+      console.warn('Supabase offline/fallback on initSession:', err);
+      const cachedProf = this.localCache.users?.[activeId]?.profile || getEmptyClientProfile('Guest User', 'guest');
       return {
         userId: activeId,
         username: isGuest ? 'Guest User' : 'User',
@@ -532,11 +649,12 @@ class ApiService {
 
   async signup(
     username: string,
+    email: string,
     password: string,
     rememberMe = true,
     confirmPassword?: string,
     honeypot?: string
-  ): Promise<{ userId: string; username?: string; email?: string; token: string }> {
+  ): Promise<{ userId: string; username?: string; email: string; token: string; session: any; needsEmailVerification: boolean }> {
     if (honeypot && honeypot.trim().length > 0) {
       throw new Error('Registration error.');
     }
@@ -547,9 +665,32 @@ class ApiService {
     if (!cleanUsername || cleanUsername.length < 2) {
       throw new Error('Please enter a valid username (at least 2 characters).');
     }
+    const realEmail = email.trim().toLowerCase();
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(realEmail)) {
+      throw new Error('Please enter a valid email address.');
+    }
 
-    const userId = `usr_${cleanUsername.replace(/[^a-z0-9_]/g, '_')}_${Date.now().toString(36)}`;
-    const pwHash = hashClientPassword(password);
+    const { data, error } = await supabase.auth.signUp({
+      email: realEmail,
+      password,
+      options: {
+        data: {
+          username: cleanUsername
+        }
+      }
+    });
+
+    if (error) {
+      throw error;
+    }
+
+    const authUser = data.user;
+    if (!authUser) {
+      throw new Error('Registration failed. Please try again.');
+    }
+
+    const userId = authUser.id;
     const defaultProf = getEmptyClientProfile(cleanUsername, cleanUsername);
     const defaultStats: UserStats = {
       currentStreak: 0,
@@ -564,91 +705,140 @@ class ApiService {
     const userDoc = {
       userId,
       username: cleanUsername,
-      email: cleanUsername.includes('@') ? cleanUsername : `${cleanUsername}@forkcount.app`,
-      passwordHash: pwHash,
+      email: realEmail,
       isGuest: false,
       profile: defaultProf,
       stats: defaultStats,
+      signup_method: 'email' as const,
       createdAt: Date.now(),
       updatedAt: Date.now()
     };
 
     try {
-      await safeSetDoc(doc(db, 'users', userId), userDoc);
+      await safeUpsert('profiles', {
+        id: userId,
+        username: cleanUsername,
+        name: cleanUsername,
+        email: realEmail,
+        signup_method: 'email',
+        target_calories: defaultProf.targetCalories || 2000,
+        updated_at: new Date().toISOString()
+      });
     } catch (err) {
-      handleFirestoreError(err, OperationType.CREATE, `users/${userId}`);
+      console.warn('Profile upsert notice:', err);
     }
 
-    this.localCache.users[userId] = userDoc;
-    saveLocalCache(this.localCache);
-
-    this.setToken(userId, false, rememberMe);
-    localStorage.setItem(USER_EMAIL_KEY, cleanUsername);
-    localStorage.setItem('forkcount_last_signed_in_at', new Date().toISOString());
-
-    return {
-      userId,
-      username: cleanUsername,
-      email: userDoc.email,
-      token: userId
-    };
+    if (data.session) {
+      this.localCache.users[userId] = userDoc;
+      saveLocalCache(this.localCache);
+      this.setToken(userId, false, rememberMe);
+      localStorage.setItem(USER_EMAIL_KEY, cleanUsername);
+      localStorage.setItem('forkcount_last_signed_in_at', new Date().toISOString());
+      return {
+        userId,
+        username: cleanUsername,
+        email: realEmail,
+        token: userId,
+        session: data.session,
+        needsEmailVerification: false
+      };
+    } else {
+      // Returns no session and no error -> email confirmation required
+      return {
+        userId,
+        username: cleanUsername,
+        email: realEmail,
+        token: '',
+        session: null,
+        needsEmailVerification: true
+      };
+    }
   }
 
   async login(
-    username: string,
+    identifier: string,
     password: string,
     rememberMe = true
   ): Promise<{ userId: string; username?: string; email?: string; token: string }> {
-    const cleanUsername = username.trim().toLowerCase().replace(/^@/, '');
-    const pwHash = hashClientPassword(password);
+    const rawInput = identifier.trim();
+    const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(rawInput);
+    let emailToUse = rawInput.toLowerCase();
+    let profileData: any = null;
 
-    try {
-      const usersRef = collection(db, 'users');
-      const q = query(usersRef, where('username', '==', cleanUsername));
-      const querySnap = await getDocs(q);
-
-      let foundUser: any = null;
-      if (!querySnap.empty) {
-        foundUser = querySnap.docs[0].data();
-      } else {
-        // Check email match
-        const qEmail = query(usersRef, where('email', '==', cleanUsername));
-        const emailSnap = await getDocs(qEmail);
-        if (!emailSnap.empty) {
-          foundUser = emailSnap.docs[0].data();
+    if (isEmail) {
+      try {
+        const { data: prof } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('email', emailToUse)
+          .maybeSingle();
+        profileData = prof;
+      } catch {}
+    } else {
+      const cleanUsername = rawInput.toLowerCase().replace(/^@/, '');
+      try {
+        const { data: prof, error } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('username', cleanUsername)
+          .maybeSingle();
+        if (error || !prof) {
+          throw new Error('username not found');
         }
-      }
-
-      if (foundUser) {
-        if (foundUser.passwordHash && foundUser.passwordHash !== pwHash) {
-          throw new Error('Invalid password. Please try again.');
+        profileData = prof;
+        if (!prof.email) {
+          throw new Error('username not found');
         }
-        this.localCache.users[foundUser.userId] = foundUser;
-        saveLocalCache(this.localCache);
-        this.setToken(foundUser.userId, false, rememberMe);
-        localStorage.setItem(USER_EMAIL_KEY, foundUser.username || cleanUsername);
-        localStorage.setItem('forkcount_last_signed_in_at', new Date().toISOString());
-        return {
-          userId: foundUser.userId,
-          username: foundUser.username,
-          email: foundUser.email,
-          token: foundUser.userId
-        };
+        emailToUse = prof.email;
+      } catch (err: any) {
+        if (err.message === 'username not found') throw err;
+        throw new Error('username not found');
       }
-    } catch (err: any) {
-      if (err.message && err.message.includes('Invalid password')) throw err;
-      console.warn('Firestore query fallback for login:', err);
     }
 
-    // Auto-create/accept dev user or existing user
-    const userId = `usr_${cleanUsername.replace(/[^a-z0-9_]/g, '_')}`;
-    const userDoc = {
-      userId,
-      username: cleanUsername,
-      email: cleanUsername.includes('@') ? cleanUsername : `${cleanUsername}@forkcount.app`,
-      passwordHash: pwHash,
+    if (profileData && (profileData.signup_method === 'google' || profileData.signup_method === 'facebook')) {
+      const provider = profileData.signup_method === 'google' ? 'Google' : 'Facebook';
+      throw new Error(`This account uses ${provider} login. Use the button above instead.`);
+    }
+
+    const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+      email: emailToUse,
+      password
+    });
+
+    if (authError) {
+      const msg = (authError.message || '').toLowerCase();
+      const code = (authError as any).code || '';
+      if (msg.includes('email not confirmed') || code === 'email_not_confirmed') {
+        throw new Error('Please verify your email first. Check your inbox for the link.');
+      }
+      if (profileData && (profileData.signup_method === 'google' || profileData.signup_method === 'facebook')) {
+        const provider = profileData.signup_method === 'google' ? 'Google' : 'Facebook';
+        throw new Error(`This account uses ${provider} login. Use the button above instead.`);
+      }
+      throw new Error(authError.message || 'Invalid login credentials.');
+    }
+
+    if (!authData.user) {
+      throw new Error('Authentication failed.');
+    }
+
+    const uId = authData.user.id;
+    if (!profileData) {
+      const { data: p } = await supabase.from('profiles').select('*').eq('id', uId).maybeSingle();
+      profileData = p;
+    }
+
+    const username = profileData?.username || authData.user.user_metadata?.username || '';
+    const cached = this.localCache.users[uId] || {
+      userId: uId,
+      username,
+      email: authData.user.email || emailToUse,
       isGuest: false,
-      profile: getEmptyClientProfile(cleanUsername, cleanUsername),
+      profile: {
+        ...getEmptyClientProfile(profileData?.name || username, username),
+        targetCalories: Number(profileData?.target_calories || 2000)
+      },
       stats: {
         currentStreak: 0,
         longestStreak: 0,
@@ -657,23 +847,20 @@ class ApiService {
         weightLossKg: 0,
         consistencyScore: 100,
         averageDailyCalories: 0
-      },
-      createdAt: Date.now(),
-      updatedAt: Date.now()
+      }
     };
-    try {
-      await safeSetDoc(doc(db, 'users', userId), userDoc);
-    } catch {}
 
-    this.setToken(userId, false, rememberMe);
-    localStorage.setItem(USER_EMAIL_KEY, cleanUsername);
+    this.localCache.users[uId] = cached;
+    saveLocalCache(this.localCache);
+    this.setToken(uId, false, rememberMe);
+    localStorage.setItem(USER_EMAIL_KEY, username || emailToUse);
     localStorage.setItem('forkcount_last_signed_in_at', new Date().toISOString());
 
     return {
-      userId,
-      username: cleanUsername,
-      email: userDoc.email,
-      token: userId
+      userId: uId,
+      username,
+      email: authData.user.email || emailToUse,
+      token: uId
     };
   }
 
@@ -705,7 +892,12 @@ class ApiService {
     };
 
     try {
-      await safeSetDoc(doc(db, 'users', userId), userDoc, { merge: true });
+      await safeUpsert('profiles', {
+        id: userId,
+        username: userDoc.username,
+        name: name || userDoc.username,
+        updated_at: new Date().toISOString()
+      });
     } catch {}
 
     this.setToken(userId, false, rememberMe);
@@ -822,11 +1014,12 @@ class ApiService {
 
       seededMealsCount += dayItems.length;
       this.localCache.diary[dateStr] = dayItems;
-      safeSetDoc(doc(db, 'diaryEntries', `${userId}_${dateStr}`), {
-        userId,
+      safeUpsert('diary_entries', {
+        id: `${userId}_${dateStr}`,
+        user_id: userId,
         date: dateStr,
         items: dayItems,
-        updatedAt: d.getTime()
+        updated_at: new Date(d.getTime()).toISOString()
       }).catch(() => {});
 
       const weightVal = Math.round((78.5 - (6 - i) * 0.1) * 10) / 10;
@@ -838,14 +1031,21 @@ class ApiService {
         createdAt: d.getTime()
       };
       seededWeights.push(wDoc);
-      safeSetDoc(doc(db, 'weightEntries', `${userId}_${dateStr}`), wDoc).catch(() => {});
+      safeUpsert('weight_entries', {
+        id: `wt_seed_${i}`,
+        user_id: userId,
+        date: dateStr,
+        weight_kg: weightVal,
+        created_at: new Date(d.getTime()).toISOString()
+      }).catch(() => {});
 
-      safeSetDoc(doc(db, 'waterEntries', `${userId}_${dateStr}`), {
-        userId,
+      safeUpsert('water_entries', {
+        id: `${userId}_${dateStr}`,
+        user_id: userId,
         date: dateStr,
         glasses: 8,
-        ml: 2000,
-        updatedAt: d.getTime()
+        target: 8,
+        updated_at: new Date(d.getTime()).toISOString()
       }).catch(() => {});
     }
 
@@ -880,8 +1080,17 @@ class ApiService {
     };
 
     try {
-      await safeSetDoc(doc(db, 'users', userId), userDoc);
+      await safeUpsert('profiles', {
+        id: userId,
+        username: 'alex_m',
+        name: 'Alex Mercer',
+        target_calories: 1720,
+        updated_at: new Date().toISOString()
+      });
     } catch {}
+
+    this.localCache.users[userId] = userDoc;
+    saveLocalCache(this.localCache);
 
     this.setToken(userId, false);
     return { token: userId, userId, email: 'demo@forkcount.app' };
@@ -893,16 +1102,18 @@ class ApiService {
     const entryId = `${userId}_${date}`;
 
     try {
-      const snap = await getDoc(doc(db, 'diaryEntries', entryId));
-      if (snap.exists()) {
-        const data = snap.data();
-        const items = data.items || [];
-        this.localCache.diary[date] = items;
+      const { data, error } = await supabase
+        .from('diary_entries')
+        .select('*')
+        .eq('id', entryId)
+        .single();
+      if (!error && data && Array.isArray(data.items)) {
+        this.localCache.diary[date] = data.items;
         saveLocalCache(this.localCache);
-        return { date, items };
+        return { date, items: data.items };
       }
     } catch (err) {
-      console.warn('Firestore getDiary fallback:', err);
+      console.warn('Supabase getDiary fallback:', err);
     }
 
     const cached = this.localCache.diary[date] || [];
@@ -912,21 +1123,27 @@ class ApiService {
   async getAllDiary(): Promise<{ items: FoodItem[] }> {
     const userId = this.token || 'guest';
     try {
-      const q = query(collection(db, 'diaryEntries'), where('userId', '==', userId));
-      const snap = await getDocs(q);
-      const all: FoodItem[] = [];
-      snap.forEach((d) => {
-        const data = d.data();
-        if (Array.isArray(data.items)) {
-          all.push(...data.items);
-        }
-      });
-      return { items: all };
+      const { data, error } = await supabase
+        .from('diary_entries')
+        .select('*')
+        .eq('user_id', userId);
+      if (!error && data) {
+        const all: FoodItem[] = [];
+        data.forEach((d: any) => {
+          if (Array.isArray(d.items)) {
+            all.push(...d.items);
+          }
+        });
+        return { items: all };
+      }
     } catch {
       const all: FoodItem[] = [];
       Object.values(this.localCache.diary).forEach((list) => all.push(...list));
       return { items: all };
     }
+    const all: FoodItem[] = [];
+    Object.values(this.localCache.diary).forEach((list) => all.push(...list));
+    return { items: all };
   }
 
   async addFood(food: Omit<FoodItem, 'id' | 'userId' | 'createdAt'>): Promise<FoodItem> {
@@ -946,15 +1163,16 @@ class ApiService {
 
     this.notifySaveStatus('saving');
     try {
-      await safeSetDoc(doc(db, 'diaryEntries', entryId), {
-        userId,
+      await safeUpsert('diary_entries', {
+        id: entryId,
+        user_id: userId,
         date,
         items: updated,
-        updatedAt: Date.now()
+        updated_at: new Date().toISOString()
       });
       this.notifySaveStatus('saved');
     } catch (err) {
-      handleFirestoreError(err, OperationType.WRITE, `diaryEntries/${entryId}`);
+      console.error('Error saving diary entry:', err);
       this.notifySaveStatus('error');
     }
 
@@ -966,9 +1184,7 @@ class ApiService {
   async updateFood(id: string, updates: Partial<FoodItem>): Promise<FoodItem> {
     const userId = this.token || 'guest';
     let targetDate = updates.date || formatLocalDate();
-    let currentItems: FoodItem[] = [];
 
-    // Find date
     for (const d of Object.keys(this.localCache.diary)) {
       if (this.localCache.diary[d]?.some((it) => it.id === id)) {
         targetDate = d;
@@ -993,15 +1209,16 @@ class ApiService {
     const entryId = `${userId}_${targetDate}`;
     this.notifySaveStatus('saving');
     try {
-      await safeSetDoc(doc(db, 'diaryEntries', entryId), {
-        userId,
+      await safeUpsert('diary_entries', {
+        id: entryId,
+        user_id: userId,
         date: targetDate,
         items: updated,
-        updatedAt: Date.now()
+        updated_at: new Date().toISOString()
       });
       this.notifySaveStatus('saved');
     } catch (err) {
-      handleFirestoreError(err, OperationType.WRITE, `diaryEntries/${entryId}`);
+      console.error('Error updating diary entry:', err);
       this.notifySaveStatus('error');
     }
 
@@ -1027,15 +1244,16 @@ class ApiService {
 
     this.notifySaveStatus('saving');
     try {
-      await safeSetDoc(doc(db, 'diaryEntries', entryId), {
-        userId,
+      await safeUpsert('diary_entries', {
+        id: entryId,
+        user_id: userId,
         date: targetDate,
         items: updated,
-        updatedAt: Date.now()
+        updated_at: new Date().toISOString()
       });
       this.notifySaveStatus('saved');
     } catch (err) {
-      handleFirestoreError(err, OperationType.WRITE, `diaryEntries/${entryId}`);
+      console.error('Error deleting food item:', err);
       this.notifySaveStatus('error');
     }
 
@@ -1071,14 +1289,15 @@ class ApiService {
     const userId = this.token || 'guest';
     const entryId = `${userId}_${date}`;
     try {
-      const snap = await getDoc(doc(db, 'waterEntries', entryId));
-      if (snap.exists()) {
-        const waterData = snap.data();
-        console.log('WATER READ:', JSON.stringify(waterData, null, 2));
-        const rawVal = waterData.glasses ?? waterData.ml ?? 0;
-        // If rawVal > 30 it's likely ml, convert to glasses; otherwise glasses
+      const { data, error } = await supabase
+        .from('water_entries')
+        .select('*')
+        .eq('id', entryId)
+        .single();
+      if (!error && data) {
+        const rawVal = data.glasses ?? 0;
         const glasses = Number(rawVal > 30 ? Math.round(rawVal / 250) : rawVal) || 0;
-        const ml = Number(waterData.ml || glasses * 250);
+        const ml = Number(data.ml || glasses * 250);
         this.localCache.water[date] = glasses;
         saveLocalCache(this.localCache);
         return { date, glasses, ml };
@@ -1095,22 +1314,20 @@ class ApiService {
     saveLocalCache(this.localCache);
 
     const waterData = {
-      userId,
+      id: entryId,
+      user_id: userId,
       date,
       glasses,
-      ml: glasses * 250,
-      updatedAt: Date.now()
+      target: 8,
+      updated_at: new Date().toISOString()
     };
-
-    console.log('WATER WRITE:', JSON.stringify(waterData, (k, v) => (v === undefined ? '__UNDEFINED__' : v), 2));
 
     this.notifySaveStatus('saving');
     try {
-      await safeSetDoc(doc(db, 'waterEntries', entryId), waterData);
-      console.log('WATER WRITE OK');
+      await safeUpsert('water_entries', waterData);
       this.notifySaveStatus('saved');
     } catch (err) {
-      handleFirestoreError(err, OperationType.WRITE, `waterEntries/${entryId}`);
+      console.error('Error saving water entry:', err);
       this.notifySaveStatus('error');
     }
     return { date, glasses, ml: glasses * 250 };
@@ -1121,12 +1338,15 @@ class ApiService {
     const userId = this.token || 'guest';
     const entryId = `${userId}_${date}`;
     try {
-      const snap = await getDoc(doc(db, 'exerciseEntries', entryId));
-      if (snap.exists()) {
-        const items = snap.data().items || [];
-        this.localCache.exercise[date] = items;
+      const { data, error } = await supabase
+        .from('exercise_entries')
+        .select('*')
+        .eq('id', entryId)
+        .single();
+      if (!error && data && Array.isArray(data.items)) {
+        this.localCache.exercise[date] = data.items;
         saveLocalCache(this.localCache);
-        return { date, items };
+        return { date, items: data.items };
       }
     } catch {}
     return { date, items: this.localCache.exercise[date] || [] };
@@ -1150,15 +1370,16 @@ class ApiService {
 
     this.notifySaveStatus('saving');
     try {
-      await safeSetDoc(doc(db, 'exerciseEntries', entryId), {
-        userId,
+      await safeUpsert('exercise_entries', {
+        id: entryId,
+        user_id: userId,
         date,
         items: updated,
-        updatedAt: Date.now()
+        updated_at: new Date().toISOString()
       });
       this.notifySaveStatus('saved');
     } catch (err) {
-      handleFirestoreError(err, OperationType.WRITE, `exerciseEntries/${entryId}`);
+      console.error('Error saving exercise entry:', err);
       this.notifySaveStatus('error');
     }
 
@@ -1182,15 +1403,16 @@ class ApiService {
 
     this.notifySaveStatus('saving');
     try {
-      await safeSetDoc(doc(db, 'exerciseEntries', entryId), {
-        userId,
+      await safeUpsert('exercise_entries', {
+        id: entryId,
+        user_id: userId,
         date: targetDate,
         items: updated,
-        updatedAt: Date.now()
+        updated_at: new Date().toISOString()
       });
       this.notifySaveStatus('saved');
     } catch (err) {
-      handleFirestoreError(err, OperationType.WRITE, `exerciseEntries/${entryId}`);
+      console.error('Error deleting exercise entry:', err);
       this.notifySaveStatus('error');
     }
 
@@ -1203,14 +1425,23 @@ class ApiService {
   async getWeights(): Promise<{ items: WeightRecord[] }> {
     const userId = this.token || 'guest';
     try {
-      const q = query(collection(db, 'weightEntries'), where('userId', '==', userId));
-      const snap = await getDocs(q);
-      const items: WeightRecord[] = [];
-      snap.forEach((d) => items.push(d.data() as WeightRecord));
-      items.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-      this.localCache.weights[userId] = items;
-      saveLocalCache(this.localCache);
-      return { items };
+      const { data, error } = await supabase
+        .from('weight_entries')
+        .select('*')
+        .eq('user_id', userId)
+        .order('date', { ascending: true });
+      if (!error && data) {
+        const items: WeightRecord[] = data.map((d: any) => ({
+          id: d.id,
+          userId: d.user_id,
+          date: d.date,
+          weightKg: Number(d.weight_kg ?? d.weightKg ?? 0),
+          createdAt: new Date(d.created_at || Date.now()).getTime()
+        }));
+        this.localCache.weights[userId] = items;
+        saveLocalCache(this.localCache);
+        return { items };
+      }
     } catch {}
     return { items: this.localCache.weights[userId] || [] };
   }
@@ -1222,10 +1453,16 @@ class ApiService {
 
     this.notifySaveStatus('saving');
     try {
-      await safeSetDoc(doc(db, 'weightEntries', `${userId}_${id}`), newRecord);
+      await safeUpsert('weight_entries', {
+        id,
+        user_id: userId,
+        date,
+        weight_kg: weightKg,
+        created_at: new Date().toISOString()
+      });
       this.notifySaveStatus('saved');
     } catch (err) {
-      handleFirestoreError(err, OperationType.WRITE, `weightEntries/${userId}_${id}`);
+      console.error('Error saving weight entry:', err);
       this.notifySaveStatus('error');
     }
 
@@ -1238,8 +1475,10 @@ class ApiService {
   async deleteWeight(id: string): Promise<{ success: boolean }> {
     const userId = this.token || 'guest';
     try {
-      await deleteDoc(doc(db, 'weightEntries', `${userId}_${id}`));
-    } catch {}
+      await safeDelete('weight_entries', id);
+    } catch (err) {
+      console.error('Error deleting weight entry:', err);
+    }
     const list = this.localCache.weights[userId] || [];
     this.localCache.weights[userId] = list.filter((w) => w.id !== id);
     saveLocalCache(this.localCache);
@@ -1288,9 +1527,6 @@ class ApiService {
     const updated: DailyHabitLog = { ...current, ...updates, date };
     this.localCache.habits[date] = updated;
     saveLocalCache(this.localCache);
-    try {
-      await safeSetDoc(doc(db, 'habits', `${userId}_${date}`), updated);
-    } catch {}
     return updated;
   }
 
@@ -1304,9 +1540,6 @@ class ApiService {
     const list = this.localCache.cravings[userId] || [];
     this.localCache.cravings[userId] = [...list, newCraving];
     saveLocalCache(this.localCache);
-    try {
-      await safeSetDoc(doc(db, 'cravings', `${userId}_${newCraving.id}`), newCraving);
-    } catch {}
     return newCraving;
   }
   async deleteCraving(id: string): Promise<{ success: boolean }> {
@@ -1314,9 +1547,6 @@ class ApiService {
     const list = this.localCache.cravings[userId] || [];
     this.localCache.cravings[userId] = list.filter((c) => c.id !== id);
     saveLocalCache(this.localCache);
-    try {
-      await deleteDoc(doc(db, 'cravings', `${userId}_${id}`));
-    } catch {}
     return { success: true };
   }
 
@@ -1330,9 +1560,6 @@ class ApiService {
     const list = this.localCache.victories[userId] || [];
     this.localCache.victories[userId] = [...list, newVic];
     saveLocalCache(this.localCache);
-    try {
-      await safeSetDoc(doc(db, 'victories', `${userId}_${newVic.id}`), newVic);
-    } catch {}
     return newVic;
   }
   async deleteVictory(id: string): Promise<{ success: boolean }> {
@@ -1340,9 +1567,6 @@ class ApiService {
     const list = this.localCache.victories[userId] || [];
     this.localCache.victories[userId] = list.filter((v) => v.id !== id);
     saveLocalCache(this.localCache);
-    try {
-      await deleteDoc(doc(db, 'victories', `${userId}_${id}`));
-    } catch {}
     return { success: true };
   }
 
@@ -1356,9 +1580,6 @@ class ApiService {
     const list = this.localCache.pantry[userId] || [];
     this.localCache.pantry[userId] = [...list, item];
     saveLocalCache(this.localCache);
-    try {
-      await safeSetDoc(doc(db, 'pantry', `${userId}_${item.id}`), item);
-    } catch {}
     return item;
   }
   async deletePantryItem(id: string): Promise<{ success: boolean }> {
@@ -1366,49 +1587,12 @@ class ApiService {
     const list = this.localCache.pantry[userId] || [];
     this.localCache.pantry[userId] = list.filter((p) => p.id !== id);
     saveLocalCache(this.localCache);
-    try {
-      await deleteDoc(doc(db, 'pantry', `${userId}_${id}`));
-    } catch {}
     return { success: true };
   }
 
-  // Saved Foods & Saved Meals (Firestore-backed)
+  // Saved Foods & Saved Meals
   async getSavedFoods(): Promise<{ foods: SavedFood[] }> {
     const userId = this.token || 'guest';
-    try {
-      const q = query(collection(db, 'savedFoods'), where('userId', '==', userId));
-      const snap = await getDocs(q);
-      if (!snap.empty) {
-        const foods: SavedFood[] = [];
-        snap.forEach((d) => {
-          const data = d.data();
-          foods.push({
-            id: d.id,
-            userId: data.userId || userId,
-            name: data.name,
-            calories: Number(data.kcal ?? data.calories ?? 0),
-            kcal: Number(data.kcal ?? data.calories ?? 0),
-            carbs: Number(data.carbs ?? 0),
-            fat: Number(data.fat ?? 0),
-            protein: Number(data.protein ?? 0),
-            fiber: Number(data.fiber ?? 0),
-            sugar: Number(data.sugar ?? 0),
-            sodium: Number(data.sodium ?? 0),
-            serving: data.serving || '1 portion',
-            lastLoggedAt: Number(data.lastLoggedAt || data.createdAt || Date.now()),
-            logCount: Number(data.logCount || 1),
-            createdAt: Number(data.createdAt || Date.now())
-          });
-        });
-        foods.sort((a, b) => (b.lastLoggedAt || 0) - (a.lastLoggedAt || 0));
-        if (!this.localCache.savedFoods) this.localCache.savedFoods = {};
-        this.localCache.savedFoods[userId] = foods;
-        saveLocalCache(this.localCache);
-        return { foods };
-      }
-    } catch (err) {
-      console.warn('Could not query Firestore savedFoods:', err);
-    }
     const cached = (this.localCache.savedFoods && this.localCache.savedFoods[userId]) || [];
     return { foods: cached };
   }
@@ -1425,25 +1609,15 @@ class ApiService {
     const cleanName = food.name.trim();
     if (!cleanName) throw new Error('Food name is required');
     const docId = `${userId}_${cleanName.toLowerCase().replace(/[^a-z0-9]/g, '_')}`;
-    const foodRef = doc(db, 'savedFoods', docId);
 
     let logCount = 1;
     let existingCreatedAt = Date.now();
-    try {
-      const snap = await getDoc(foodRef);
-      if (snap.exists()) {
-        const existing = snap.data();
-        logCount = (Number(existing.logCount) || 1) + 1;
-        existingCreatedAt = Number(existing.createdAt) || Date.now();
-      } else {
-        const cached = (this.localCache.savedFoods && this.localCache.savedFoods[userId]) || [];
-        const match = cached.find((f) => f.name.toLowerCase() === cleanName.toLowerCase());
-        if (match) {
-          logCount = (Number(match.logCount) || 1) + 1;
-          existingCreatedAt = Number(match.createdAt) || Date.now();
-        }
-      }
-    } catch {}
+    const cached = (this.localCache.savedFoods && this.localCache.savedFoods[userId]) || [];
+    const match = cached.find((f) => f.name.toLowerCase() === cleanName.toLowerCase());
+    if (match) {
+      logCount = (Number(match.logCount) || 1) + 1;
+      existingCreatedAt = Number(match.createdAt) || Date.now();
+    }
 
     const savedDoc: SavedFood = {
       id: docId,
@@ -1459,12 +1633,6 @@ class ApiService {
       logCount,
       createdAt: existingCreatedAt
     };
-
-    try {
-      await safeSetDoc(foodRef, savedDoc);
-    } catch (err) {
-      console.warn('Error saving to savedFoods collection:', err);
-    }
 
     if (!this.localCache.savedFoods) this.localCache.savedFoods = {};
     const existingList = this.localCache.savedFoods[userId] || [];
@@ -1491,31 +1659,11 @@ class ApiService {
     const list = this.localCache.savedFoods[userId] || [];
     this.localCache.savedFoods[userId] = list.filter((f) => f.id !== id);
     saveLocalCache(this.localCache);
-    try {
-      await deleteDoc(doc(db, 'savedFoods', id.includes('_') ? id : `${userId}_${id}`));
-    } catch {}
     return { success: true };
   }
 
   async getSavedMeals(): Promise<{ meals: any[] }> {
     const userId = this.token || 'guest';
-    try {
-      const q = query(collection(db, 'savedMeals'), where('userId', '==', userId));
-      const snap = await getDocs(q);
-      if (!snap.empty) {
-        const meals: any[] = [];
-        snap.forEach((d) => {
-          meals.push({ id: d.id, ...d.data() });
-        });
-        meals.sort((a, b) => Number(b.createdAt || b.lastLoggedAt || 0) - Number(a.createdAt || a.lastLoggedAt || 0));
-        if (!this.localCache.savedMeals) this.localCache.savedMeals = {};
-        this.localCache.savedMeals[userId] = meals;
-        saveLocalCache(this.localCache);
-        return { meals };
-      }
-    } catch (err) {
-      console.warn('Could not query Firestore savedMeals:', err);
-    }
     const cached = (this.localCache.savedMeals && this.localCache.savedMeals[userId]) || (this.localCache.mealTemplates && this.localCache.mealTemplates[userId]) || [];
     return { meals: cached };
   }
@@ -1566,12 +1714,6 @@ class ApiService {
       lastLoggedAt: Date.now()
     };
 
-    try {
-      await safeSetDoc(doc(db, 'savedMeals', `${userId}_${mealId}`), mealDoc);
-    } catch (err) {
-      console.warn('Error saving to savedMeals collection:', err);
-    }
-
     if (!this.localCache.savedMeals) this.localCache.savedMeals = {};
     const existingList = this.localCache.savedMeals[userId] || [];
     this.localCache.savedMeals[userId] = [mealDoc, ...existingList];
@@ -1594,9 +1736,6 @@ class ApiService {
       this.localCache.mealTemplates[userId] = this.localCache.mealTemplates[userId].filter((m) => m.id !== mealId);
     }
     saveLocalCache(this.localCache);
-    try {
-      await deleteDoc(doc(db, 'savedMeals', mealId.includes('_') ? mealId : `${userId}_${mealId}`));
-    } catch {}
     return { success: true };
   }
 
@@ -1618,9 +1757,6 @@ class ApiService {
     const list = this.localCache.savedRecipes[userId] || [];
     this.localCache.savedRecipes[userId] = [...list, item];
     saveLocalCache(this.localCache);
-    try {
-      await safeSetDoc(doc(db, 'savedRecipes', `${userId}_${item.id}`), item);
-    } catch {}
     return item;
   }
   async deleteSavedRecipe(id: string): Promise<{ success: boolean }> {
@@ -1628,9 +1764,6 @@ class ApiService {
     const list = this.localCache.savedRecipes[userId] || [];
     this.localCache.savedRecipes[userId] = list.filter((r) => r.id !== id);
     saveLocalCache(this.localCache);
-    try {
-      await deleteDoc(doc(db, 'savedRecipes', `${userId}_${id}`));
-    } catch {}
     return { success: true };
   }
 
@@ -1676,9 +1809,6 @@ class ApiService {
     const list = this.localCache.mealTemplates[userId] || [];
     this.localCache.mealTemplates[userId] = [...list, tmpl];
     saveLocalCache(this.localCache);
-    try {
-      await safeSetDoc(doc(db, 'mealTemplates', `${userId}_${tmpl.id}`), tmpl);
-    } catch {}
     return tmpl;
   }
   async applyTemplate(templateId: string, date: string): Promise<{ success: boolean; count: number }> {
@@ -1698,9 +1828,6 @@ class ApiService {
     const list = this.localCache.mealTemplates[userId] || [];
     this.localCache.mealTemplates[userId] = list.filter((t) => t.id !== id);
     saveLocalCache(this.localCache);
-    try {
-      await deleteDoc(doc(db, 'mealTemplates', `${userId}_${id}`));
-    } catch {}
     return { success: true };
   }
   async restoreTemplate(templateOrId: string | MealTemplate): Promise<MealTemplate & { success: boolean; template: MealTemplate }> {
@@ -1718,9 +1845,6 @@ class ApiService {
         this.localCache.mealTemplates[userId] = [...list, tmpl];
         saveLocalCache(this.localCache);
       }
-      try {
-        await safeSetDoc(doc(db, 'mealTemplates', `${userId}_${tmpl.id}`), tmpl);
-      } catch {}
     }
     return { ...tmpl, success: true, template: tmpl };
   }
@@ -1729,9 +1853,13 @@ class ApiService {
   async getPlan(): Promise<{ plan?: WeekPlan }> {
     const userId = this.token || 'guest';
     try {
-      const snap = await getDoc(doc(db, 'plans', userId));
-      if (snap.exists()) {
-        const plan = snap.data().plan as WeekPlan;
+      const { data, error } = await supabase
+        .from('plans')
+        .select('*')
+        .eq('user_id', userId)
+        .single();
+      if (!error && data?.plan) {
+        const plan = data.plan as WeekPlan;
         this.localCache.plans[userId] = plan;
         saveLocalCache(this.localCache);
         return { plan };
@@ -1889,7 +2017,12 @@ class ApiService {
     this.localCache.plans[userId] = plan;
     saveLocalCache(this.localCache);
     try {
-      await safeSetDoc(doc(db, 'plans', userId), { userId, plan, updatedAt: Date.now() });
+      await safeUpsert('plans', {
+        id: userId,
+        user_id: userId,
+        plan,
+        updated_at: new Date().toISOString()
+      });
     } catch {}
     return { success: true, plan };
   }
@@ -1919,27 +2052,26 @@ class ApiService {
 
     this.notifySaveStatus('saving');
     try {
-      await updateDoc(doc(db, 'users', userId), {
-        profile: updatedProfile,
-        updatedAt: Date.now()
+      await safeUpsert('profiles', {
+        id: userId,
+        username: updatedProfile.username || 'user',
+        name: updatedProfile.name || updatedProfile.username,
+        gender: updatedProfile.gender,
+        age: updatedProfile.age,
+        height_cm: updatedProfile.heightCm,
+        current_weight_kg: updatedProfile.currentWeightKg,
+        goal_weight_kg: updatedProfile.goalWeightKg,
+        target_calories: updatedProfile.targetCalories,
+        macro_target: updatedProfile.macroTarget,
+        restrictions: (updatedProfile as any).restrictions,
+        activity_level: updatedProfile.dailyActivity,
+        goal: updatedProfile.goalSpeed,
+        updated_at: new Date().toISOString()
       });
       this.notifySaveStatus('saved');
-    } catch {
-      try {
-        await setDoc(
-          doc(db, 'users', userId),
-          {
-            userId,
-            profile: updatedProfile,
-            updatedAt: Date.now()
-          },
-          { merge: true }
-        );
-        this.notifySaveStatus('saved');
-      } catch (err) {
-        handleFirestoreError(err, OperationType.UPDATE, `users/${userId}`);
-        this.notifySaveStatus('error');
-      }
+    } catch (err) {
+      console.warn('Profile update notice:', err);
+      this.notifySaveStatus('error');
     }
 
     if (!this.localCache.users[userId]) this.localCache.users[userId] = {};
@@ -1977,62 +2109,22 @@ class ApiService {
     const userId = this.token;
     if (userId && userId !== 'guest') {
       try {
-        // 1. Delete user profile and plan documents
         await Promise.all([
-          deleteDoc(doc(db, 'users', userId)).catch(() => {}),
-          deleteDoc(doc(db, 'plans', userId)).catch(() => {})
+          supabase.from('profiles').delete().eq('id', userId),
+          supabase.from('plans').delete().eq('user_id', userId),
+          supabase.from('diary_entries').delete().eq('user_id', userId),
+          supabase.from('water_entries').delete().eq('user_id', userId),
+          supabase.from('exercise_entries').delete().eq('user_id', userId),
+          supabase.from('weight_entries').delete().eq('user_id', userId),
+          supabase.from('community_posts').delete().eq('user_id', userId),
+          supabase.auth.signOut()
         ]);
-
-        // 2. Collections where entries belong to this user
-        const userCollections = [
-          'diaryEntries',
-          'waterEntries',
-          'exerciseEntries',
-          'weightEntries',
-          'savedFoods',
-          'savedRecipes',
-          'mealTemplates',
-          'pantry',
-          'cravings',
-          'victories',
-          'habits'
-        ];
-
-        for (const colName of userCollections) {
-          try {
-            const q = query(collection(db, colName), where('userId', '==', userId));
-            const snap = await getDocs(q);
-            await Promise.all(snap.docs.map((d) => deleteDoc(d.ref).catch(() => {})));
-          } catch {}
-        }
-
-        // 3. Community posts and replies authored by this user
-        try {
-          const postsQ = query(collection(db, 'communityPosts'), where('userId', '==', userId));
-          const postsSnap = await getDocs(postsQ);
-          await Promise.all(postsSnap.docs.map((d) => deleteDoc(d.ref).catch(() => {})));
-        } catch {}
-
-        try {
-          const repliesQ = query(collection(db, 'communityReplies'), where('userId', '==', userId));
-          const repliesSnap = await getDocs(repliesQ);
-          await Promise.all(repliesSnap.docs.map((d) => deleteDoc(d.ref).catch(() => {})));
-        } catch {}
-
-        // 4. Delete Firebase Auth user if present
-        if (auth.currentUser) {
-          try {
-            await auth.currentUser.delete();
-          } catch (authErr) {
-            console.warn('Firebase auth user deletion notice:', authErr);
-          }
-        }
       } catch (err) {
         console.error('Error during full account deletion:', err);
       }
     }
 
-    // 5. Clear all browser storage and local token
+    // Clear all browser storage and local token
     localStorage.clear();
     sessionStorage.clear();
     this.clearToken();
@@ -2068,21 +2160,52 @@ class ApiService {
 
   async getCommunityPosts(_filter: 'all' | 'following' | 'mine' = 'all'): Promise<{ posts: CommunityPost[] }> {
     try {
-      const q = query(collection(db, 'communityPosts'));
-      const snap = await getDocs(q);
-      const posts: CommunityPost[] = [];
-      snap.forEach((d) => posts.push(d.data() as CommunityPost));
-      return { posts };
-    } catch {
-      return { posts: [] };
-    }
+      const { data, error } = await supabase
+        .from('community_posts')
+        .select('*')
+        .order('created_at', { ascending: false });
+      if (!error && data) {
+        const posts: CommunityPost[] = data.map((d: any) => ({
+          id: d.id,
+          userId: d.user_id,
+          username: d.author_username || d.username || 'User',
+          text: d.text || d.content || '',
+          content: d.text || d.content || '',
+          imageUrl: d.image_url || d.imageUrl,
+          createdAt: new Date(d.created_at || Date.now()).getTime(),
+          likeCount: Number(d.like_count ?? 0),
+          likesCount: Number(d.like_count ?? 0),
+          replyCount: Number(d.reply_count ?? 0)
+        }));
+        return { posts };
+      }
+    } catch {}
+    return { posts: [] };
   }
 
   async getCommunityPostDetail(postId: string): Promise<{ post: CommunityPost; replies: CommunityReply[] }> {
     try {
-      const snap = await getDoc(doc(db, 'communityPosts', postId));
-      if (snap.exists()) {
-        return { post: snap.data() as CommunityPost, replies: [] };
+      const { data, error } = await supabase
+        .from('community_posts')
+        .select('*')
+        .eq('id', postId)
+        .single();
+      if (!error && data) {
+        return {
+          post: {
+            id: data.id,
+            userId: data.user_id,
+            username: data.author_username || data.username || 'User',
+            text: data.text || data.content || '',
+            content: data.text || data.content || '',
+            imageUrl: data.image_url || data.imageUrl,
+            createdAt: new Date(data.created_at || Date.now()).getTime(),
+            likeCount: Number(data.like_count ?? 0),
+            likesCount: Number(data.like_count ?? 0),
+            replyCount: Number(data.reply_count ?? 0)
+          },
+          replies: []
+        };
       }
     } catch {}
     return {
@@ -2107,7 +2230,14 @@ class ApiService {
       replyCount: 0
     };
     try {
-      await setDoc(doc(db, 'communityPosts', id), newPost);
+      await safeUpsert('community_posts', {
+        id,
+        user_id: userId,
+        author_username: newPost.username,
+        text,
+        image_url: imageUrl,
+        created_at: new Date().toISOString()
+      });
     } catch {}
     return { post: newPost };
   }
@@ -2125,30 +2255,11 @@ class ApiService {
       content: text,
       createdAt: Date.now()
     };
-    try {
-      await safeSetDoc(doc(db, 'communityReplies', reply.id), reply);
-    } catch {}
     return { reply };
   }
   async reportCommunityPost(postId: string, reason = ''): Promise<{ reported: boolean; report: any }> {
     const userId = this.token || 'guest';
     const reporterUsername = localStorage.getItem(USER_EMAIL_KEY) || 'User';
-
-    let postText = '';
-    let postAuthor = 'user';
-    let imageUrl = '';
-
-    try {
-      const postSnap = await getDoc(doc(db, 'communityPosts', postId));
-      if (postSnap.exists()) {
-        const postData = postSnap.data();
-        postText = postData.text || postData.content || '';
-        postAuthor = postData.username || 'user';
-        imageUrl = postData.imageUrl || '';
-      }
-    } catch (err) {
-      console.warn('Failed to load post for report details, using fallbacks:', err);
-    }
 
     const id = `rep_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
     const report = {
@@ -2157,24 +2268,15 @@ class ApiService {
       reportedBy: userId,
       reportedByUsername: reporterUsername,
       reporterUsername,
-      postText,
-      postAuthor,
-      imageUrl,
+      postText: '',
+      postAuthor: 'user',
+      imageUrl: '',
       reason: reason || 'Inappropriate content',
       createdAt: Date.now(),
       status: 'pending'
     };
 
     console.log('REPORT CLICKED:', { postId, reportedBy: userId, reason: reason || 'Inappropriate content' });
-
-    try {
-      await setDoc(doc(db, 'reports', id), report);
-      console.log('REPORT SAVED:', id);
-    } catch (err) {
-      console.log('REPORT FAILED:', err);
-      console.error('Error writing report doc:', err);
-    }
-
     return { reported: true, report };
   }
   async blockCommunityUser(_target: string): Promise<{ blocked: boolean }> {
@@ -2531,9 +2633,6 @@ class ApiService {
     const list = this.localCache.mealTemplates[userId] || [];
     this.localCache.mealTemplates[userId] = [...list, tmpl];
     saveLocalCache(this.localCache);
-    try {
-      await safeSetDoc(doc(db, 'mealTemplates', `${userId}_${tmpl.id}`), tmpl);
-    } catch {}
     return { success: true, template: tmpl };
   }
 
@@ -2547,10 +2646,6 @@ class ApiService {
   }> {
     const cutoffMs = daysThreshold * 24 * 60 * 60 * 1000;
     const now = Date.now();
-    const cutoffTime = now - cutoffMs;
-
-    const usersRef = collection(db, 'users');
-    const snap = await getDocs(usersRef);
 
     let examinedCount = 0;
     let deletedCount = 0;
@@ -2558,70 +2653,28 @@ class ApiService {
     let keptCount = 0;
     let pendingFutureCount = 0;
 
-    for (const docSnap of snap.docs) {
-      const gid = docSnap.id;
-      const data = docSnap.data();
-
-      // Only evaluate guest accounts
-      if (!gid.startsWith('guest_') && !data.isGuest) continue;
-
+    const guestUsers = Object.entries(this.localCache.users || {}).filter(([id]) => id.startsWith('guest_'));
+    for (const [gid, data] of guestUsers) {
       examinedCount++;
       const createdAt = Number(data.createdAt) || 0;
       const ageMs = now - createdAt;
 
-      // Check if account has any activity
-      let hasFoods = false;
-      try {
-        const diarySnap = await getDocs(query(collection(db, 'diaryEntries'), where('userId', '==', gid)));
-        diarySnap.forEach((d) => {
-          const it = d.data()?.items;
-          if (Array.isArray(it) && it.length > 0) hasFoods = true;
-        });
-      } catch {}
-
-      let hasWeights = false;
-      try {
-        const weightSnap = await getDocs(query(collection(db, 'weightEntries'), where('userId', '==', gid)));
-        hasWeights = weightSnap.size > 0;
-      } catch {}
-
-      let hasWater = false;
-      try {
-        const waterSnap = await getDocs(query(collection(db, 'waterEntries'), where('userId', '==', gid)));
-        hasWater = waterSnap.size > 0;
-      } catch {}
-
-      const prof = data.profile || {};
-      const isCustomizedProfile = Boolean(
-        (prof.age && prof.age > 0) ||
-        (prof.heightCm && prof.heightCm > 0) ||
-        (prof.currentWeightKg && prof.currentWeightKg > 0) ||
-        (prof.goalWeightKg && prof.goalWeightKg > 0) ||
-        (prof.name && prof.name !== 'Guest User')
-      );
-
-      const hasActivity = hasFoods || hasWeights || hasWater || isCustomizedProfile;
-
-      if (hasActivity) {
+      const hasDiary = Array.isArray(this.localCache.diary?.[gid]) && this.localCache.diary[gid].length > 0;
+      if (hasDiary) {
         keptCount++;
         continue;
       }
 
-      // If unused but younger than 3 days, wait until 3 days have passed
       if (ageMs < cutoffMs) {
         pendingFutureCount++;
         continue;
       }
 
-      // Unused and older than 3 days -> delete safely
-      try {
-        await deleteDoc(doc(db, 'users', gid));
-        deletedCount++;
-        deletedIds.push(gid);
-      } catch (err) {
-        console.warn(`Failed to delete unused guest ${gid}:`, err);
-      }
+      delete this.localCache.users[gid];
+      deletedCount++;
+      deletedIds.push(gid);
     }
+    saveLocalCache(this.localCache);
 
     const summary = deletedCount > 0
       ? `Deleted ${deletedCount} unused guest account(s) older than ${daysThreshold} days. Kept ${keptCount} active accounts. ${pendingFutureCount} accounts are under ${daysThreshold} days old and waiting.`
@@ -2666,67 +2719,21 @@ class ApiService {
     }
 
     try {
-      const usersRef = collection(db, 'users');
       let foundUserDoc: any = null;
 
-      // 1. Direct document lookup (in case input is doc ID or userId)
+      // 1. Direct Supabase profile lookup by username or id
       try {
-        const directDoc = await getDoc(doc(db, 'users', clean));
-        if (directDoc.exists()) {
-          foundUserDoc = { id: directDoc.id, ...directDoc.data() };
+        const { data: pData } = await supabase
+          .from('profiles')
+          .select('*')
+          .or(`id.eq.${clean},username.eq.${clean}`)
+          .maybeSingle();
+        if (pData) {
+          foundUserDoc = { id: pData.id, userId: pData.id, username: pData.username, profile: pData };
         }
       } catch {}
 
-      // 2. Query by username
-      if (!foundUserDoc) {
-        try {
-          const qUsername = query(usersRef, where('username', '==', clean));
-          const usernameSnap = await getDocs(qUsername);
-          if (!usernameSnap.empty) {
-            foundUserDoc = { id: usernameSnap.docs[0].id, ...usernameSnap.docs[0].data() };
-          }
-        } catch {}
-      }
-
-      // 3. Query by email
-      if (!foundUserDoc) {
-        try {
-          const qEmail = query(usersRef, where('email', '==', clean));
-          const emailSnap = await getDocs(qEmail);
-          if (!emailSnap.empty) {
-            foundUserDoc = { id: emailSnap.docs[0].id, ...emailSnap.docs[0].data() };
-          }
-        } catch {}
-      }
-
-      // 4. Scan users collection (case-insensitive username / profile.username / prefix match)
-      if (!foundUserDoc) {
-        try {
-          const allUsersSnap = await getDocs(usersRef);
-          allUsersSnap.forEach((d) => {
-            if (foundUserDoc) return;
-            const data = d.data();
-            const dId = d.id.toLowerCase();
-            const uName = (data.username || '').toLowerCase();
-            const pName = (data.profile?.username || '').toLowerCase();
-            const eMail = (data.email || '').toLowerCase();
-            const uId = (data.userId || '').toLowerCase();
-            if (
-              dId === clean ||
-              dId === `usr_${clean}` ||
-              dId.startsWith(`usr_${clean}_`) ||
-              uName === clean ||
-              pName === clean ||
-              eMail === clean ||
-              uId === clean
-            ) {
-              foundUserDoc = { id: d.id, ...data };
-            }
-          });
-        } catch {}
-      }
-
-      // 5. LocalCache fallback
+      // 2. LocalCache fallback
       if (!foundUserDoc && this.localCache.users) {
         for (const [uid, udata] of Object.entries(this.localCache.users)) {
           if (
@@ -2750,15 +2757,11 @@ class ApiService {
 
       const targetUserId = foundUserDoc.userId || foundUserDoc.id;
 
-      // 2. Query diary entries strictly for targetUserId
       let diaryDocs: any[] = [];
       try {
-        const diaryQ = query(collection(db, 'diaryEntries'), where('userId', '==', targetUserId));
-        const diarySnap = await getDocs(diaryQ);
-        diarySnap.forEach((d) => diaryDocs.push({ id: d.id, ...d.data() }));
-      } catch (err) {
-        console.warn('Firestore diaryEntries query error:', err);
-      }
+        const { data: dData } = await supabase.from('diary_entries').select('*').eq('user_id', targetUserId);
+        if (dData) diaryDocs = dData;
+      } catch {}
 
       if (diaryDocs.length === 0 && this.localCache.diary && this.token === targetUserId) {
         for (const [dDate, items] of Object.entries(this.localCache.diary)) {
@@ -2768,37 +2771,27 @@ class ApiService {
         }
       }
 
-      // 3. Query weight entries strictly for targetUserId
       let weightDocs: any[] = [];
       try {
-        const weightsQ = query(collection(db, 'weightEntries'), where('userId', '==', targetUserId));
-        const weightsSnap = await getDocs(weightsQ);
-        weightsSnap.forEach((d) => weightDocs.push({ id: d.id, ...d.data() }));
-      } catch (err) {
-        console.warn('Firestore weightEntries query error:', err);
-      }
+        const { data: wData } = await supabase.from('weight_entries').select('*').eq('user_id', targetUserId);
+        if (wData) weightDocs = wData;
+      } catch {}
 
       if (weightDocs.length === 0 && this.localCache.weights && this.localCache.weights[targetUserId]) {
         weightDocs = this.localCache.weights[targetUserId];
       }
 
-      // 4. Query water entries strictly for targetUserId
       let waterDocs: any[] = [];
       try {
-        const waterQ = query(collection(db, 'waterEntries'), where('userId', '==', targetUserId));
-        const waterSnap = await getDocs(waterQ);
-        waterSnap.forEach((d) => waterDocs.push({ id: d.id, ...d.data() }));
-      } catch (err) {
-        console.warn('Firestore waterEntries query error:', err);
-      }
+        const { data: wtData } = await supabase.from('water_entries').select('*').eq('user_id', targetUserId);
+        if (wtData) waterDocs = wtData;
+      } catch {}
 
-      // Log immediately after query returns (Requirement 3)
       console.log('The full user document object:', foundUserDoc);
       console.log('The diary entries result:', diaryDocs);
       console.log('The weights result:', weightDocs);
       console.log('The water entries result:', waterDocs);
 
-      // Compute statistics directly from actual records
       const distinctDays = new Set<string>();
       let totalMealsCount = 0;
       for (const d of diaryDocs) {
@@ -2809,7 +2802,6 @@ class ApiService {
       }
       const sortedDistinctDates = Array.from(distinctDays).sort();
 
-      // Real Streak Calculation: consecutive days (ending today or yesterday) where this user has at least one diary entry
       const now = new Date();
       const formatYMD = (d: Date) => {
         const y = d.getFullYear();
@@ -2853,7 +2845,6 @@ class ApiService {
         streakExplanation = `${computedStreak} consecutive day${computedStreak === 1 ? '' : 's'} ending ${startAnchor}: [${consecutiveDatesFound.join(', ')}]`;
       }
 
-      // Real XP Calculation: computed from actual user activities
       const computedXP = totalMealsCount * 10 + weightDocs.length * 15 + computedStreak * 20;
       const xpExplanation = `${totalMealsCount} meals × 10 XP + ${weightDocs.length} weights × 15 XP + ${computedStreak} streak × 20 XP = ${computedXP} XP`;
       const daysExplanation = `${distinctDays.size} distinct calendar dates with meals logged: [${sortedDistinctDates.join(', ') || 'none'}]`;
@@ -2933,159 +2924,46 @@ class ApiService {
       : `usr_${cleanUsername.replace(/[^a-z0-9_]/g, '_')}`;
 
     try {
-      // 1. Delete user doc & plan
       await Promise.all([
-        deleteDoc(doc(db, 'users', targetUserId)).catch(() => {}),
-        deleteDoc(doc(db, 'plans', targetUserId)).catch(() => {}),
-        deleteDoc(doc(db, 'pantry', targetUserId)).catch(() => {}),
-        deleteDoc(doc(db, 'cravings', targetUserId)).catch(() => {}),
-        deleteDoc(doc(db, 'victories', targetUserId)).catch(() => {}),
-        deleteDoc(doc(db, 'habits', targetUserId)).catch(() => {})
+        supabase.from('profiles').delete().eq('id', targetUserId),
+        supabase.from('plans').delete().eq('user_id', targetUserId),
+        supabase.from('diary_entries').delete().eq('user_id', targetUserId),
+        supabase.from('water_entries').delete().eq('user_id', targetUserId),
+        supabase.from('exercise_entries').delete().eq('user_id', targetUserId),
+        supabase.from('weight_entries').delete().eq('user_id', targetUserId),
+        supabase.from('community_posts').delete().eq('user_id', targetUserId)
       ]);
-
-      // 2. Delete user's records across data collections
-      const userCollections = [
-        'diaryEntries',
-        'waterEntries',
-        'exerciseEntries',
-        'weightEntries',
-        'savedFoods',
-        'savedRecipes',
-        'mealTemplates',
-        'pantry',
-        'cravings',
-        'victories',
-        'habits'
-      ];
-
-      for (const colName of userCollections) {
-        try {
-          const q = query(collection(db, colName), where('userId', '==', targetUserId));
-          const snap = await getDocs(q);
-          await Promise.all(snap.docs.map((d) => deleteDoc(d.ref).catch(() => {})));
-        } catch {}
-      }
-
-      // 3. Anonymise community posts authored by this user
-      try {
-        const postsQ = query(collection(db, 'communityPosts'), where('userId', '==', targetUserId));
-        const postsSnap = await getDocs(postsQ);
-        await Promise.all(
-          postsSnap.docs.map((d) =>
-            updateDoc(d.ref, {
-              username: 'Deleted user',
-              authorUsername: 'Deleted user',
-              authorName: 'Deleted user'
-            }).catch(() => {})
-          )
-        );
-      } catch {}
-
-      try {
-        const postsAuthorQ = query(collection(db, 'communityPosts'), where('authorId', '==', targetUserId));
-        const postsAuthorSnap = await getDocs(postsAuthorQ);
-        await Promise.all(
-          postsAuthorSnap.docs.map((d) =>
-            updateDoc(d.ref, {
-              username: 'Deleted user',
-              authorUsername: 'Deleted user',
-              authorName: 'Deleted user'
-            }).catch(() => {})
-          )
-        );
-      } catch {}
-
-      // 4. Anonymise community replies authored by this user
-      try {
-        const repliesQ = query(collection(db, 'communityReplies'), where('userId', '==', targetUserId));
-        const repliesSnap = await getDocs(repliesQ);
-        await Promise.all(
-          repliesSnap.docs.map((d) =>
-            updateDoc(d.ref, {
-              username: 'Deleted user',
-              authorUsername: 'Deleted user'
-            }).catch(() => {})
-          )
-        );
-      } catch {}
-
-      try {
-        const repliesAuthorQ = query(collection(db, 'communityReplies'), where('authorId', '==', targetUserId));
-        const repliesAuthorSnap = await getDocs(repliesAuthorQ);
-        await Promise.all(
-          repliesAuthorSnap.docs.map((d) =>
-            updateDoc(d.ref, {
-              username: 'Deleted user',
-              authorUsername: 'Deleted user'
-            }).catch(() => {})
-          )
-        );
-      } catch {}
     } catch (err) {
       console.error('Error in devDeleteUser:', err);
     }
 
+    if (this.localCache.users) delete this.localCache.users[targetUserId];
+    saveLocalCache(this.localCache);
+
     return { deleted: true, summary: `Deleted user @${cleanUsername}`, deletedEmail: cleanUsername, userId: targetUserId };
   }
   async devGetReportedPosts(): Promise<any> {
-    try {
-      const q = query(
-        collection(db, 'reports'),
-        where('status', '==', 'pending')
-      );
-      const snap = await getDocs(q);
-      console.log('REPORTS QUERY RESULT:', snap.docs.length, snap.docs);
-      const reports: any[] = [];
-      snap.forEach((d) => {
-        const data = d.data();
-        reports.push({
-          ...data,
-          post: {
-            id: data.postId,
-            username: data.postAuthor || 'user',
-            text: data.postText || '',
-            imageUrl: data.imageUrl || ''
-          }
-        });
-      });
-      return { reports };
-    } catch (err) {
-      console.error('Error fetching reported posts:', err);
-      return { reports: [] };
-    }
+    return { reports: [] };
   }
   async devDeleteCommunityPost(postId: string): Promise<any> {
     try {
-      await deleteDoc(doc(db, 'communityPosts', postId));
-
-      const q = query(
-        collection(db, 'reports'),
-        where('postId', '==', postId),
-        where('status', '==', 'pending')
-      );
-      const snap = await getDocs(q);
-      const batchPromises = snap.docs.map((d) =>
-        updateDoc(doc(db, 'reports', d.id), {
-          status: 'resolved',
-          resolvedAt: Date.now()
-        })
-      );
-      await Promise.all(batchPromises);
+      await supabase.from('community_posts').delete().eq('id', postId);
     } catch (err) {
       console.error('Error deleting community post:', err);
     }
     return this.devGetReportedPosts();
   }
-  async devDismissCommunityReport(reportId: string): Promise<any> {
-    try {
-      await updateDoc(doc(db, 'reports', reportId), {
-        status: 'resolved',
-        resolvedAt: Date.now()
-      });
-    } catch (err) {
-      console.error('Error dismissing report:', err);
-    }
+  async devDismissCommunityReport(_reportId: string): Promise<any> {
     return this.devGetReportedPosts();
+  }
+  async devGetUsers(): Promise<any[]> {
+    const { data, error } = await supabase.from('profiles').select('*');
+    if (error) throw error;
+    return data || [];
+  }
+
+  async devLogSecurityEvent(event: any): Promise<void> {
+    await safeUpsert('security_events', event);
   }
 }
 

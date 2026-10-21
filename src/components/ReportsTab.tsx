@@ -788,7 +788,7 @@ export const ReportsTab: React.FC = () => {
         </div>
         {targetSaveSuccess && (
           <p className="text-[11px] text-teal-400 mt-2 font-mono flex items-center gap-1">
-            <Check className="w-3 h-3" /> Target updated in Firestore — Diary recalculated.
+            <Check className="w-3 h-3" /> Target updated in database — Diary recalculated.
           </p>
         )}
       </div>

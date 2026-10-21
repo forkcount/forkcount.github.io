@@ -19,8 +19,6 @@ import {
   Code,
   Database
 } from 'lucide-react';
-import { doc, setDoc, getDocs, collection } from 'firebase/firestore';
-import { db } from '../firebase.js';
 import { useApp } from '../context/AppContext.js';
 import { api } from '../services/api.js';
 import type { CommunityPost, ReportedPostRecord } from '../types/index.js';
@@ -132,19 +130,7 @@ export const DevToolsSheet: React.FC<DevToolsSheetProps> = ({
   const loadUsersList = useCallback(async () => {
     setIsLoadingUsers(true);
     try {
-      const snap = await getDocs(collection(db, 'users'));
-      const list: any[] = [];
-      snap.forEach((d) => {
-        const data = d.data();
-        list.push({
-          id: d.id,
-          username: data.username || data.profile?.username || 'Guest',
-          isDev: Boolean(data.isDev || data.profile?.isDev),
-          createdAt: data.createdAt || 0,
-          updatedAt: data.updatedAt || 0,
-          ...data
-        });
-      });
+      const list = await api.devGetUsers();
       // Sort by createdAt, newest first
       list.sort((a, b) => b.createdAt - a.createdAt);
       setUsersList(list);
@@ -391,7 +377,7 @@ export const DevToolsSheet: React.FC<DevToolsSheetProps> = ({
 
         // Log action to the Security Events collection
         try {
-          await setDoc(doc(db, 'securityEvents', `sec_${Date.now()}`), {
+          await api.devLogSecurityEvent({
             id: `sec_${Date.now()}`,
             userId: userId || 'admin',
             username: localStorage.getItem('forkcount_user_email') || 'admin',
@@ -918,7 +904,7 @@ export const DevToolsSheet: React.FC<DevToolsSheetProps> = ({
                   })()}
                 </div>
 
-                {/* Debug Button to inspect Raw Firestore data & computations side by side */}
+                {/* Debug Button to inspect Raw Database data & computations side by side */}
                 <div className="pt-2 border-t border-zinc-900 flex items-center justify-between">
                   <button
                     type="button"
@@ -926,7 +912,7 @@ export const DevToolsSheet: React.FC<DevToolsSheetProps> = ({
                     className="px-2.5 py-1.5 bg-zinc-900 hover:bg-zinc-850 border border-zinc-750 text-teal-300 font-sans font-medium rounded-lg text-[11px] flex items-center gap-1.5 transition-colors"
                   >
                     <Code className="w-3.5 h-3.5 text-teal-400" />
-                    <span>{showInspectorDebug ? 'Hide Raw Firestore Data' : 'Debug: Compare Raw Data & Calculations'}</span>
+                    <span>{showInspectorDebug ? 'Hide Raw Database Data' : 'Debug: Compare Raw Data & Calculations'}</span>
                   </button>
                   <span className="text-[10px] text-zinc-500 font-sans">
                     {showInspectorDebug ? 'Showing live comparison' : 'Click to inspect raw documents'}
@@ -937,7 +923,7 @@ export const DevToolsSheet: React.FC<DevToolsSheetProps> = ({
                   <div className="mt-3 pt-3 border-t border-zinc-800 space-y-3 font-sans text-xs">
                     <div className="flex items-center gap-1.5 text-teal-400 font-bold">
                       <Database className="w-3.5 h-3.5" />
-                      <span>Raw Firestore Data &amp; Calculation Breakdown</span>
+                      <span>Raw Database Data &amp; Calculation Breakdown</span>
                     </div>
 
                     {/* Side-by-Side Comparison */}

@@ -58,7 +58,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onAuthComplete }) => {
   } = useApp();
 
   const handleCloseModal = async () => {
-    // 1. Cancel in-progress signup (do not leave partial account in Firestore or localStorage)
+    // 1. Cancel in-progress signup (do not leave partial account in database or localStorage)
     const isIncompleteSignup = flowStage.startsWith('step') || mode === 'signup';
     if (isIncompleteSignup) {
       if (userId && !userId.startsWith('guest_')) {
@@ -389,7 +389,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onAuthComplete }) => {
         macroTarget
       };
 
-      // 1. Update Firestore & AppContext profile
+      // 1. Update database & AppContext profile
       await updateUserProfile(fullProfile);
 
       // 2. Add starting weight record

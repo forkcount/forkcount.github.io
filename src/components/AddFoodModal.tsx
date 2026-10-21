@@ -421,7 +421,7 @@ export const AddFoodModal: React.FC<AddFoodModalProps> = ({ isOpen, onClose, def
     );
   }, [inputText, activeResult]);
 
-  // Unified Log action: reads parsed item(s), saves to Firestore diary, resets form, and navigates back to Diary
+  // Unified Log action: reads parsed item(s), saves to database diary, resets form, and navigates back to Diary
   const handleLogAndSave = async (eOrExplicitText?: React.FormEvent | string) => {
     if (eOrExplicitText && typeof eOrExplicitText !== 'string' && 'preventDefault' in eOrExplicitText) {
       eOrExplicitText.preventDefault();

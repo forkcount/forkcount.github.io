@@ -12,8 +12,7 @@ import type {
   NonScaleVictory,
   PantryItem
 } from '../types/index.js';
-import { signOut } from 'firebase/auth';
-import { auth } from '../firebase.js';
+import { supabase } from '../services/supabase.js';
 import { api, getEmptyClientProfile } from '../services/api.js';
 import {
   calculateDailyCalorieTarget,
@@ -1001,11 +1000,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const signOutUser = useCallback(async () => {
     try {
-      if (auth.currentUser) {
-        await signOut(auth);
-      }
+      await supabase.auth.signOut();
     } catch (err) {
-      console.warn('Firebase signOut error:', err);
+      console.warn('Supabase signOut error:', err);
     } finally {
       try {
         api.logout();

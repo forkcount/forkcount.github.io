@@ -219,6 +219,8 @@ export interface MealTemplate {
 export interface UserProfile {
   name: string;
   username?: string;
+  email?: string;
+  signup_method?: 'email' | 'google' | 'facebook';
   country?: string;
   age: number;
   gender: 'male' | 'female' | 'other' | 'prefer_not_to_say' | '';

@@ -1,5 +1,5 @@
 /**
- * Standalone backend helpers replaced by direct Firestore client operations.
+ * Standalone backend helpers replaced by direct client operations.
  */
 export async function standaloneFetch(_input: RequestInfo | URL, _init?: RequestInit): Promise<Response> {
   return new Response(JSON.stringify({ success: true }), {
