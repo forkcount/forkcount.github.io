@@ -7,6 +7,7 @@ import { DiaryTab } from './components/DiaryTab.js';
 import { AuthModal } from './components/AuthModal.js';
 import { OnboardingModal } from './components/OnboardingModal.js';
 import { WeeklyRecapModal } from './components/WeeklyRecapModal.js';
+import { ApologyModal } from './components/ApologyModal.js';
 import { LegalFooter } from './components/LegalFooter.js';
 import { DesktopScrollbar } from './components/DesktopScrollbar.js';
 import { ErrorBoundary } from './components/ErrorBoundary.js';
@@ -92,7 +93,8 @@ const MainAppContent: React.FC<MainAppContentProps> = ({
     updateWaterGlasses,
     isGuest,
     openGuestLock,
-    saveStatus
+    saveStatus,
+    profile
   } = useApp();
 
   useEffect(() => {
@@ -343,6 +345,7 @@ const MainAppContent: React.FC<MainAppContentProps> = ({
       <OnboardingModal />
       <FirstRunTooltips />
       {!isGuest && <WeeklyRecapModal />}
+      {Boolean(profile) && <ApologyModal />}
       <AuthModal
         onAuthComplete={() => {
           setCurrentTab('diary');

@@ -38,8 +38,10 @@ import {
   RefreshCw,
   Pencil,
   AlertCircle,
-  Info
+  Info,
+  Mail
 } from 'lucide-react';
+import { supabase } from '../services/supabase.js';
 import { useApp } from '../context/AppContext.js';
 import { api } from '../services/api.js';
 import { APP_VERSION } from '../utils/i18n.js';
@@ -129,7 +131,8 @@ export const MeTab: React.FC<MeTabProps> = ({
     exercises,
     allExercises,
     waterGlasses,
-    signOutUser
+    signOutUser,
+    userEmail
   } = useApp();
 
   const handleSignOut = async () => {
@@ -275,6 +278,12 @@ export const MeTab: React.FC<MeTabProps> = ({
 
   // Non-scale victories (#41)
   const [newVictory, setNewVictory] = useState('');
+
+  // Email change flow state
+  const [showEmailChange, setShowEmailChange] = useState(false);
+  const [newEmailInput, setNewEmailInput] = useState('');
+  const [emailChangeStatus, setEmailChangeStatus] = useState<string | null>(null);
+  const [isUpdatingEmail, setIsUpdatingEmail] = useState(false);
 
   // #55 Username change flow state
   const [showUsernameChange, setShowUsernameChange] = useState(false);
@@ -2025,12 +2034,92 @@ export const MeTab: React.FC<MeTabProps> = ({
             </button>
           </div>
 
+          {/* Email Row with Change Dialog */}
+          <div className="flex items-center justify-between p-3 bg-zinc-950 border border-zinc-800 rounded-xl">
+            <div className="flex items-center gap-2.5">
+              <div className="p-2 rounded-lg bg-zinc-900 border border-zinc-800 text-teal-400">
+                <Mail className="w-4 h-4" />
+              </div>
+              <div>
+                <span className="text-[10px] text-zinc-500 uppercase tracking-wider font-semibold block">Email Address</span>
+                <span className="text-xs font-medium text-zinc-200">{profile?.email || userEmail || 'No email set'}</span>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setShowEmailChange((v) => !v);
+                setShowUsernameChange(false);
+                setShowPasswordChange(false);
+                setEmailChangeStatus(null);
+              }}
+              className="px-2.5 py-1.5 bg-zinc-900 hover:bg-zinc-850 border border-zinc-700 rounded-lg text-xs font-semibold text-zinc-200 flex items-center gap-1.5 transition-colors cursor-pointer"
+            >
+              <Pencil className="w-3 h-3 text-teal-400" />
+              <span>Change</span>
+            </button>
+          </div>
+
+          {/* Change Email Form */}
+          {showEmailChange && (
+            <div className="p-3.5 bg-zinc-950 border border-zinc-800 rounded-xl space-y-3">
+              <h5 className="text-xs font-bold text-zinc-200">Change Email Address</h5>
+              <div className="space-y-2">
+                <input
+                  type="email"
+                  value={newEmailInput}
+                  onChange={(e) => setNewEmailInput(e.target.value)}
+                  placeholder="Enter new email address"
+                  aria-label="New email address"
+                  className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-zinc-100 placeholder-zinc-500 focus:border-teal-500 focus:outline-none"
+                />
+                <button
+                  type="button"
+                  disabled={isUpdatingEmail}
+                  onClick={async () => {
+                    setEmailChangeStatus(null);
+                    const cleanEmail = newEmailInput.trim().toLowerCase();
+                    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+                      setEmailChangeStatus('Please enter a valid email address.');
+                      return;
+                    }
+                    setIsUpdatingEmail(true);
+                    try {
+                      const { error: authErr } = await supabase.auth.updateUser({ email: cleanEmail });
+                      if (authErr) throw authErr;
+
+                      if (userId) {
+                        await supabase.from('profiles').update({ email: cleanEmail }).eq('id', userId);
+                      }
+                      await updateUserProfile({ email: cleanEmail });
+                      setEmailChangeStatus('Confirmation link sent to your new email. Please verify to complete the change.');
+                      setNewEmailInput('');
+                    } catch (err: any) {
+                      setEmailChangeStatus(err?.message || 'Failed to update email.');
+                    } finally {
+                      setIsUpdatingEmail(false);
+                    }
+                  }}
+                  className="w-full py-2 bg-teal-500 hover:bg-teal-400 text-zinc-950 font-bold rounded-lg text-xs disabled:opacity-50 transition-colors"
+                >
+                  {isUpdatingEmail ? 'Updating...' : 'Update Email'}
+                </button>
+              </div>
+              {emailChangeStatus && (
+                <p role="status" aria-live="polite" className="text-[11px] text-teal-300">
+                  {emailChangeStatus}
+                </p>
+              )}
+            </div>
+          )}
+
           <div className="grid grid-cols-2 gap-2">
             <button
               type="button"
               onClick={() => {
                 setShowUsernameChange((v) => !v);
                 setShowPasswordChange(false);
+                setShowEmailChange(false);
               }}
               aria-label="Change account username"
               className="p-2.5 bg-zinc-950 hover:bg-zinc-850 border border-zinc-800 rounded-xl text-xs font-medium text-zinc-200 flex items-center justify-center gap-1.5 transition-colors"

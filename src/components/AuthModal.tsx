@@ -38,11 +38,48 @@ import {
 } from '../utils/validation.js';
 import type { UserProfile } from '../types/index.js';
 
+import { supabase } from '../services/supabase.js';
+
+const GoogleIcon: React.FC<{ className?: string }> = ({ className = 'size-4' }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="none">
+    <path
+      d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+      fill="#4285F4"
+    />
+    <path
+      d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+      fill="#34A853"
+    />
+    <path
+      d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
+      fill="#FBBC05"
+    />
+    <path
+      d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
+      fill="#EA4335"
+    />
+  </svg>
+);
+
+const FacebookIcon: React.FC<{ className?: string }> = ({ className = 'size-4' }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="currentColor">
+    <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
+  </svg>
+);
+
 interface AuthModalProps {
   onAuthComplete?: () => void;
 }
 
-type AuthFlowStage = 'credentials' | 'forgot_password' | 'step1_basic' | 'step2_body' | 'step3_lifestyle' | 'step4_targets';
+type AuthFlowStage =
+  | 'credentials'
+  | 'check_email'
+  | 'choose_username'
+  | 'forgot_password'
+  | 'step1_basic'
+  | 'step2_body'
+  | 'step3_lifestyle'
+  | 'step4_targets';
 
 export const AuthModal: React.FC<AuthModalProps> = ({ onAuthComplete }) => {
   const {
@@ -111,6 +148,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onAuthComplete }) => {
     setFitnessLevel('');
     setDailyActivity('');
     setGoal('');
+    setEmail('');
+    setIsResending(false);
+    setResendSuccess(false);
     setFlowStage('credentials');
 
     // 3. Close the modal
@@ -127,6 +167,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onAuthComplete }) => {
 
   // Credentials State
   const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -135,6 +176,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onAuthComplete }) => {
   const [rememberMe, setRememberMe] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  const [isResending, setIsResending] = useState(false);
+  const [resendSuccess, setResendSuccess] = useState(false);
 
   // Password reset state
   const [resetEmail, setResetEmail] = useState('');
@@ -299,6 +342,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onAuthComplete }) => {
     }
 
     if (mode === 'signup') {
+      const cleanEmail = email.trim().toLowerCase();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+        setErrorMsg('Please enter a valid email address.');
+        return;
+      }
       if (password !== confirmPassword) {
         setErrorMsg('Passwords do not match.');
         return;
@@ -310,13 +358,17 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onAuthComplete }) => {
 
     try {
       if (mode === 'signup') {
-        const signupRes = await api.signup(cleanUsername, password, rememberMe, confirmPassword, honeypot);
+        const cleanEmail = email.trim().toLowerCase();
+        const signupRes = await api.signup(cleanUsername, cleanEmail, password, rememberMe, confirmPassword, honeypot);
         trackEvent('signup');
-        await onAuthSuccess();
-        // Move to Onboarding Step 1
-        setFlowStage('step1_basic');
+        if (!signupRes.needsEmailVerification && signupRes.session) {
+          await onAuthSuccess();
+          setFlowStage('step1_basic');
+        } else {
+          setFlowStage('check_email');
+        }
       } else {
-        await api.login(cleanUsername, password, rememberMe);
+        await api.login(username.trim(), password, rememberMe);
         await onAuthSuccess();
         const freshProfile = await api.getProfile();
         if (freshProfile.profile?.isDev || hasCompleteProfileStats(freshProfile.profile)) {
@@ -329,6 +381,66 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onAuthComplete }) => {
       }
     } catch (err: any) {
       setErrorMsg(err.message || 'Authentication failed. Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleGoogleOAuth = async () => {
+    setErrorMsg('');
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: { redirectTo: window.location.origin + '/dashboard' }
+      });
+      if (error) throw error;
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Google sign in failed');
+    }
+  };
+
+  const handleFacebookOAuth = async () => {
+    setErrorMsg('');
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'facebook',
+        options: { redirectTo: window.location.origin + '/dashboard' }
+      });
+      if (error) throw error;
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Facebook sign in failed');
+    }
+  };
+
+  const handleChooseUsernameSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const cleanUsername = username.trim().toLowerCase().replace(/^@/, '');
+    if (!cleanUsername || cleanUsername.length < 2) {
+      setErrorMsg('Please enter a valid username (at least 2 characters).');
+      return;
+    }
+    setIsLoading(true);
+    setErrorMsg('');
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const currentUserId = session?.user?.id || userId;
+      const currentEmail = session?.user?.email || '';
+      const provider = (session?.user?.app_metadata?.provider as string) || 'google';
+      const signup_method = provider === 'facebook' ? 'facebook' : provider === 'google' ? 'google' : 'email';
+
+      const { error } = await supabase.from('profiles').upsert({
+        id: currentUserId,
+        username: cleanUsername,
+        name: session?.user?.user_metadata?.full_name || cleanUsername,
+        email: currentEmail,
+        signup_method,
+        updated_at: new Date().toISOString()
+      });
+      if (error) throw error;
+
+      setFlowStage('step1_basic');
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Failed to set username. Please try again.');
     } finally {
       setIsLoading(false);
     }
@@ -435,6 +547,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onAuthComplete }) => {
                   : 'Welcome back'
                 : flowStage === 'forgot_password'
                 ? 'Reset password'
+                : flowStage === 'check_email'
+                ? 'Check your email'
+                : flowStage === 'choose_username'
+                ? 'Choose your username'
                 : 'Set up your profile'}
             </h2>
             {flowStage.startsWith('step') && (
@@ -495,7 +611,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onAuthComplete }) => {
         {/* 1. Credentials Screen */}
         {flowStage === 'credentials' && (
           <form onSubmit={handleCredentialsSubmit} className="mt-3 flex flex-col flex-1 min-h-0 overflow-hidden">
-            <div className="flex-1 overflow-y-auto pr-1.5 pb-6 space-y-4">
+            <div className="flex-1 overflow-y-auto pr-1.5 pb-4 space-y-3.5">
               <input
                 type="text"
                 name="honeypot"
@@ -507,13 +623,15 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onAuthComplete }) => {
               />
 
               <div>
-                <label className="block text-xs font-medium text-zinc-300 mb-1.5">Username</label>
+                <label className="block text-xs font-medium text-zinc-300 mb-1.5">
+                  {mode === 'signup' ? 'Username' : 'Username or Email'}
+                </label>
                 <div className="relative">
                   <User className="absolute left-3.5 top-1/2 -translate-y-1/2 size-4 text-zinc-500" />
                   <input
                     type="text"
                     required
-                    placeholder="e.g. alex_fitness"
+                    placeholder={mode === 'signup' ? 'e.g. alex_fitness' : 'e.g. alex_fitness or you@example.com'}
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
                     className="w-full rounded-xl border border-zinc-700 bg-zinc-800/80 py-2.5 pl-10 pr-3.5 text-sm text-zinc-100 placeholder-zinc-500 focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
@@ -543,6 +661,24 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onAuthComplete }) => {
                 </div>
               </div>
 
+              {/* Email field on signup (between Password and Confirm Password) */}
+              {mode === 'signup' && (
+                <div>
+                  <label className="block text-xs font-medium text-zinc-300 mb-1.5">Email</label>
+                  <div className="relative">
+                    <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 size-4 text-zinc-500" />
+                    <input
+                      type="email"
+                      required
+                      placeholder="you@example.com"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      className="w-full rounded-xl border border-zinc-700 bg-zinc-800/80 py-2.5 pl-10 pr-3.5 text-sm text-zinc-100 placeholder-zinc-500 focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
+                    />
+                  </div>
+                </div>
+              )}
+
               {mode === 'signup' && (
                 <div>
                   <label className="block text-xs font-medium text-zinc-300 mb-1.5">Confirm Password</label>
@@ -568,7 +704,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onAuthComplete }) => {
               )}
             </div>
 
-            <div className="pt-3 border-t border-zinc-800 bg-zinc-900/95 shrink-0 space-y-3">
+            <div className="pt-3 border-t border-zinc-800 bg-zinc-900/95 shrink-0 space-y-2.5">
               <button
                 type="submit"
                 disabled={isLoading}
@@ -584,15 +720,236 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onAuthComplete }) => {
                 )}
               </button>
 
-              <div className="flex items-center justify-between text-xs text-zinc-400">
+              {/* OAuth Continue with Google / Facebook buttons */}
+              <div className="relative my-2">
+                <div className="absolute inset-0 flex items-center">
+                  <div className="w-full border-t border-zinc-800" />
+                </div>
+                <div className="relative flex justify-center text-xs">
+                  <span className="bg-zinc-900 px-2 text-zinc-500 font-medium">or</span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
                 <button
                   type="button"
-                  onClick={() => setMode(mode === 'signup' ? 'login' : 'signup')}
+                  onClick={handleGoogleOAuth}
+                  disabled={isLoading}
+                  className="w-full flex items-center justify-center gap-2 rounded-xl border border-zinc-700 bg-zinc-800/80 hover:bg-zinc-800 hover:border-zinc-600 py-2.5 px-2 text-xs font-semibold text-zinc-100 transition-all disabled:opacity-50"
+                >
+                  <GoogleIcon className="size-4 shrink-0" />
+                  <span className="truncate">Continue with Google</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleFacebookOAuth}
+                  disabled={isLoading}
+                  className="w-full flex items-center justify-center gap-2 rounded-xl border border-zinc-700 bg-zinc-800/80 hover:bg-zinc-800 hover:border-zinc-600 py-2.5 px-2 text-xs font-semibold text-zinc-100 transition-all disabled:opacity-50"
+                >
+                  <FacebookIcon className="size-4 text-[#1877F2] shrink-0" />
+                  <span className="truncate">Continue with Facebook</span>
+                </button>
+              </div>
+
+              <div className="flex items-center justify-between text-xs text-zinc-400 pt-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMode(mode === 'signup' ? 'login' : 'signup');
+                    setErrorMsg('');
+                  }}
                   className="hover:text-teal-300 font-medium"
                 >
                   {mode === 'signup' ? 'Already have an account? Sign in' : "Don't have an account? Sign up"}
                 </button>
+
+                {mode === 'login' && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setErrorMsg('');
+                      setFlowStage('forgot_password');
+                    }}
+                    className="hover:text-teal-300 font-medium text-zinc-400"
+                  >
+                    Forgot password?
+                  </button>
+                )}
               </div>
+            </div>
+          </form>
+        )}
+
+        {/* Check your email screen */}
+        {flowStage === 'check_email' && (
+          <div className="mt-3 flex flex-col flex-1 min-h-0 text-center py-6 px-2 space-y-4">
+            <div className="mx-auto size-12 rounded-2xl bg-teal-500/10 border border-teal-500/30 flex items-center justify-center text-teal-400">
+              <Mail className="size-6" />
+            </div>
+            <div className="space-y-1">
+              <h3 className="text-base font-bold text-zinc-100">Check your email</h3>
+              <p className="text-xs text-zinc-300 leading-relaxed max-w-sm mx-auto">
+                We sent a verification link to <span className="font-semibold text-teal-300">{email}</span>. Click it to activate your account.
+              </p>
+            </div>
+
+            {resendSuccess && (
+              <div className="rounded-xl border border-teal-500/30 bg-teal-500/10 p-2.5 text-xs text-teal-300">
+                Verification email resent! Check your inbox.
+              </div>
+            )}
+
+            <div className="pt-2 space-y-2 max-w-xs mx-auto w-full">
+              <button
+                type="button"
+                disabled={isResending}
+                onClick={async () => {
+                  setIsResending(true);
+                  setErrorMsg('');
+                  try {
+                    const { error } = await supabase.auth.resend({
+                      type: 'signup',
+                      email: email.trim().toLowerCase()
+                    });
+                    if (error) throw error;
+                    setResendSuccess(true);
+                  } catch (err: any) {
+                    setErrorMsg(err.message || 'Failed to resend email');
+                  } finally {
+                    setIsResending(false);
+                  }
+                }}
+                className="w-full rounded-xl bg-teal-500 py-2.5 text-xs font-bold text-zinc-950 shadow-md shadow-teal-500/20 hover:bg-teal-400 disabled:opacity-50 transition-all"
+              >
+                {isResending ? 'Resending...' : 'Resend email'}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setFlowStage('credentials');
+                  setMode('login');
+                  setErrorMsg('');
+                }}
+                className="w-full py-2 text-xs text-zinc-400 hover:text-zinc-200 transition-colors"
+              >
+                Back to sign in
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Choose your username screen (for OAuth users) */}
+        {flowStage === 'choose_username' && (
+          <form onSubmit={handleChooseUsernameSubmit} className="mt-3 flex flex-col flex-1 min-h-0 space-y-4 py-3">
+            <div className="text-center space-y-1">
+              <div className="mx-auto size-11 rounded-2xl bg-teal-500/10 border border-teal-500/30 flex items-center justify-center text-teal-400 mb-2">
+                <User className="size-5" />
+              </div>
+              <h3 className="text-base font-bold text-zinc-100">Choose your username</h3>
+              <p className="text-xs text-zinc-400">Select a unique username to finish setting up your account.</p>
+            </div>
+
+            <div className="space-y-1.5 pt-2">
+              <label className="block text-xs font-medium text-zinc-300">Username</label>
+              <div className="relative">
+                <User className="absolute left-3.5 top-1/2 -translate-y-1/2 size-4 text-zinc-500" />
+                <input
+                  type="text"
+                  required
+                  autoFocus
+                  placeholder="e.g. alex_fitness"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  className="w-full rounded-xl border border-zinc-700 bg-zinc-800/80 py-2.5 pl-10 pr-3.5 text-sm text-zinc-100 placeholder-zinc-500 focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
+                />
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={isLoading}
+              className="w-full flex items-center justify-center gap-2 rounded-xl bg-teal-500 py-3 text-sm font-bold text-zinc-950 shadow-lg shadow-teal-500/20 hover:bg-teal-400 disabled:opacity-50 transition-all mt-4"
+            >
+              {isLoading ? <span>Saving...</span> : <span>Continue to setup</span>}
+              <ArrowRight className="size-4" />
+            </button>
+          </form>
+        )}
+
+        {/* Forgot password screen */}
+        {flowStage === 'forgot_password' && (
+          <form
+            onSubmit={async (e) => {
+              e.preventDefault();
+              if (!resetEmail.trim()) {
+                setErrorMsg('Please enter your username or email.');
+                return;
+              }
+              setIsLoading(true);
+              setErrorMsg('');
+              try {
+                await api.requestPasswordReset(resetEmail.trim());
+                setResetSentSuccess(true);
+                setErrorMsg('');
+              } catch (err: any) {
+                setErrorMsg(err.message || 'Failed to send reset link.');
+              } finally {
+                setIsLoading(false);
+              }
+            }}
+            className="mt-3 flex flex-col flex-1 min-h-0 space-y-4 py-2"
+          >
+            <div className="space-y-1">
+              <p className="text-xs text-zinc-400">
+                Enter your username or email address and we will send you a password reset link.
+              </p>
+            </div>
+
+            {resetSentSuccess ? (
+              <div className="rounded-xl border border-teal-500/30 bg-teal-500/10 p-3 text-xs text-teal-300 space-y-1">
+                <p className="font-semibold">Reset link sent!</p>
+                <p className="text-teal-400/90">Please check your email to reset your password.</p>
+              </div>
+            ) : (
+              <div className="space-y-1.5">
+                <label className="block text-xs font-medium text-zinc-300">Username or Email</label>
+                <div className="relative">
+                  <User className="absolute left-3.5 top-1/2 -translate-y-1/2 size-4 text-zinc-500" />
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. alex_fitness or you@example.com"
+                    value={resetEmail}
+                    onChange={(e) => setResetEmail(e.target.value)}
+                    className="w-full rounded-xl border border-zinc-700 bg-zinc-800/80 py-2.5 pl-10 pr-3.5 text-sm text-zinc-100 placeholder-zinc-500 focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
+                  />
+                </div>
+              </div>
+            )}
+
+            <div className="pt-2 space-y-2">
+              {!resetSentSuccess && (
+                <button
+                  type="submit"
+                  disabled={isLoading}
+                  className="w-full flex items-center justify-center gap-2 rounded-xl bg-teal-500 py-3 text-sm font-bold text-zinc-950 shadow-lg shadow-teal-500/20 hover:bg-teal-400 disabled:opacity-50 transition-all"
+                >
+                  {isLoading ? <span>Sending...</span> : <span>Send reset link</span>}
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={() => {
+                  setFlowStage('credentials');
+                  setErrorMsg('');
+                  setResetSentSuccess(false);
+                }}
+                className="w-full py-2 text-xs text-zinc-400 hover:text-zinc-200 transition-colors"
+              >
+                Back to sign in
+              </button>
             </div>
           </form>
         )}
