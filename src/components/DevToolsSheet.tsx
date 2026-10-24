@@ -100,6 +100,7 @@ export const DevToolsSheet: React.FC<DevToolsSheetProps> = ({
   >('verification_code');
   const [isSendingTestEmail, setIsSendingTestEmail] = useState(false);
   const [testEmailStatus, setTestEmailStatus] = useState<string | null>(null);
+  const [testEmailError, setTestEmailError] = useState(false);
 
   // 5. Security Events & Recent Backend Errors state
   const [securitySearch, setSecuritySearch] = useState('');
@@ -330,14 +331,26 @@ export const DevToolsSheet: React.FC<DevToolsSheetProps> = ({
     if (!testEmailRecipient.trim()) return;
     setIsSendingTestEmail(true);
     setTestEmailStatus(null);
+    setTestEmailError(false);
     try {
       const res = await api.devSendTestEmail(testEmailRecipient.trim(), testEmailTemplate);
-      setTestEmailStatus(
-        res.resendResult?.ok
-          ? `Sent ${res.templateType} email to ${res.recipientEmail}${res.resendResult.messageId ? ` (ID: ${res.resendResult.messageId})` : ''}.`
-          : `Dispatched ${res.templateType} to ${res.recipientEmail} (simulated / no API key).`
-      );
+      const msgIdSuffix = res.resendResult?.messageId ? ` (ID: ${res.resendResult.messageId})` : '';
+      if (res.resendResult?.ok && res.resendResult?.sandboxFallback) {
+        setTestEmailStatus(
+          `Delivered ${res.templateType} email to ${res.resendResult.deliveredTo} (Resend sandbox routed from ${res.recipientEmail})${msgIdSuffix}.`
+        );
+      } else if (res.resendResult?.ok) {
+        setTestEmailStatus(
+          `Sent ${res.templateType} email to ${res.recipientEmail}${msgIdSuffix}.`
+        );
+      } else {
+        setTestEmailError(true);
+        setTestEmailStatus(
+          res.resendResult?.error?.message || `Could not send ${res.templateType} email to ${res.recipientEmail}.`
+        );
+      }
     } catch (err: any) {
+      setTestEmailError(true);
       setTestEmailStatus(err?.message || 'Failed to send test email.');
     } finally {
       setIsSendingTestEmail(false);
@@ -1072,7 +1085,13 @@ export const DevToolsSheet: React.FC<DevToolsSheetProps> = ({
             </form>
 
             {testEmailStatus && (
-              <p className="text-[11px] font-mono text-teal-300 bg-zinc-950 border border-zinc-800 rounded-xl p-2.5">
+              <p
+                className={`text-[11px] font-mono rounded-xl p-2.5 border ${
+                  testEmailError
+                    ? 'text-rose-300 bg-rose-950/50 border-rose-900/60'
+                    : 'text-teal-300 bg-zinc-950 border-zinc-800'
+                }`}
+              >
                 {testEmailStatus}
               </p>
             )}

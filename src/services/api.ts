@@ -610,10 +610,12 @@ class ApiService {
     needsUsername?: boolean;
   }> {
     let activeId = this.token || this.getGuestId();
+    let sessionUser: any = null;
 
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (session?.user) {
+        sessionUser = session.user;
         activeId = session.user.id;
         this.setToken(activeId, false);
       }
@@ -640,9 +642,17 @@ class ApiService {
 
     const isGuest = activeId.startsWith('guest_');
 
-    // 1. Check cached and restored data
-    const cachedUser = this.localCache.users?.[activeId];
-    const restoredProfile = (RESTORED_DB.profiles as any)?.[activeId];
+    // 1. Check cached and restored data (support both raw UUID and usr_-prefixed IDs)
+    const cachedUser = this.localCache.users?.[activeId] || this.localCache.users?.[`usr_${activeId}`];
+    const isDevAccountId =
+      activeId === 'usr_545648c7-5e38-44fc-adc5-373e0b3e5e18' ||
+      activeId === '545648c7-5e38-44fc-adc5-373e0b3e5e18' ||
+      activeId === '545648c7-5e38-44fc-adc5-373e0b3e5e19' ||
+      Boolean(sessionUser?.user_metadata?.isDev);
+    const restoredProfile =
+      (RESTORED_DB.profiles as any)?.[activeId] ||
+      (RESTORED_DB.profiles as any)?.[`usr_${activeId}`] ||
+      (isDevAccountId ? (RESTORED_DB.profiles as any)?.['usr_545648c7-5e38-44fc-adc5-373e0b3e5e18'] : undefined);
 
     // 2. Try reading from Supabase profiles if possible
     let userProfile: any = null;
@@ -666,54 +676,67 @@ class ApiService {
       } catch {}
     }
 
+    const metaUsername = sessionUser?.user_metadata?.username || '';
+    const metaName = sessionUser?.user_metadata?.name || sessionUser?.user_metadata?.full_name || '';
     const baseProf = userProfile || cachedUser?.profile || restoredProfile;
 
     // 4. ONLY flag needsUsername if the user has an active OAuth Supabase session
-    // and has NO username anywhere (neither in Supabase, nor server, nor local cache, nor restored DB)
-    if (!isGuest && (!baseProf || !baseProf.username)) {
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session?.user) {
-          return {
-            userId: activeId,
-            username: '',
-            email: session.user.email || '',
-            isGuest: false,
-            isDev: false,
-            needsUsername: true,
-            profile: getEmptyClientProfile('User', ''),
-            stats: {
-              currentStreak: 0,
-              longestStreak: 0,
-              mealsLoggedTotal: 0,
-              uniqueFoodsCount: 0,
-              weightLossKg: 0,
-              consistencyScore: 100,
-              averageDailyCalories: 0
-            }
-          };
-        }
-      } catch {}
+    // and has NO username anywhere (including user_metadata)
+    if (!isGuest && (!baseProf || !baseProf.username) && !metaUsername) {
+      if (sessionUser) {
+        return {
+          userId: activeId,
+          username: '',
+          email: sessionUser.email || '',
+          isGuest: false,
+          isDev: false,
+          needsUsername: true,
+          profile: getEmptyClientProfile('User', ''),
+          stats: {
+            currentStreak: 0,
+            longestStreak: 0,
+            mealsLoggedTotal: 0,
+            uniqueFoodsCount: 0,
+            weightLossKg: 0,
+            consistencyScore: 100,
+            averageDailyCalories: 0
+          }
+        };
+      }
     }
 
     // 5. Build resolved full profile
+    const resolvedUsername = baseProf?.username || metaUsername || (isGuest ? 'Guest User' : '');
+    const resolvedName = baseProf?.name || metaName || resolvedUsername || 'User';
+    const resolvedIsDev = Boolean(
+      baseProf?.isDev ||
+      baseProf?.is_dev ||
+      cachedUser?.isDev ||
+      isDevAccountId
+    );
     const finalProfile: UserProfile = {
-      ...getEmptyClientProfile(baseProf?.name || baseProf?.username || 'User', baseProf?.username || 'user'),
+      ...getEmptyClientProfile(resolvedName, resolvedUsername || 'user'),
       ...(baseProf || {}),
       age: baseProf?.age ?? 0,
       gender: baseProf?.gender ?? '',
       heightCm: Number(baseProf?.heightCm ?? baseProf?.height_cm ?? baseProf?.height ?? 0),
       currentWeightKg: Number(baseProf?.currentWeightKg ?? baseProf?.current_weight_kg ?? baseProf?.currentWeight ?? 0),
       goalWeightKg: Number(baseProf?.goalWeightKg ?? baseProf?.goal_weight_kg ?? baseProf?.goalWeight ?? 0),
+      fitnessLevel: baseProf?.fitnessLevel ?? baseProf?.fitness_level ?? 'intermediate',
       dailyActivity: baseProf?.dailyActivity ?? baseProf?.activity_level ?? baseProf?.activity ?? 'moderate',
       goalSpeed: baseProf?.goalSpeed ?? baseProf?.goal ?? 'maintain',
       targetCalories: Number(baseProf?.targetCalories ?? baseProf?.target_calories ?? 2000),
+      signupComplete: resolvedIsDev ? true : Boolean(baseProf?.signupComplete ?? baseProf?.signup_complete ?? false),
       restrictions: baseProf?.restrictions ?? [],
-      name: baseProf?.name || baseProf?.username || 'User',
-      username: baseProf?.username || (isGuest ? 'Guest User' : ''),
-      email: baseProf?.email || cachedUser?.email || (isGuest ? '' : `${baseProf?.username || 'user'}@forkcount.app`),
+      name: resolvedName,
+      username: resolvedUsername,
+      email:
+        baseProf?.email ||
+        sessionUser?.email ||
+        cachedUser?.email ||
+        (isGuest ? '' : `${resolvedUsername || 'user'}@forkcount.app`),
       signup_method: baseProf?.signup_method || cachedUser?.signup_method,
-      isDev: Boolean(baseProf?.isDev || cachedUser?.isDev || activeId === 'usr_545648c7-5e38-44fc-adc5-373e0b3e5e18')
+      isDev: resolvedIsDev
     };
 
     const finalStats: UserStats = cachedUser?.stats || {
@@ -867,41 +890,116 @@ class ApiService {
     rememberMe = true
   ): Promise<{ userId: string; username?: string; email?: string; token: string }> {
     const rawInput = identifier.trim();
-    const cleanInput = rawInput.toLowerCase().replace(/^@/, '');
-    if ((cleanInput === 'forkcount dev' || cleanInput === 'forkcountdev' || cleanInput === 'forkcount_dev') && password === 'flies') {
-      const devUserId = 'usr_545648c7-5e38-44fc-adc5-373e0b3e5e18';
+    const cleanInput = rawInput.toLowerCase().replace(/[^a-z0-9]/g, '');
+    const lowerInput = rawInput.toLowerCase();
+    const trimmedPassword = String(password || '').trim();
+
+    const isForkCountDev =
+      cleanInput === 'forkcountdev' ||
+      lowerInput === 'forkcount.dev@forkcount.app' ||
+      lowerInput === 'forkcount.dev@forkcount.local' ||
+      lowerInput === 'forkcount.dev@mail2world.com';
+
+    if (isForkCountDev) {
+      if (trimmedPassword !== 'flies123' && trimmedPassword !== 'flies') {
+        throw new Error('Wrong username or password.');
+      }
+
+      let devUserId = 'usr_545648c7-5e38-44fc-adc5-373e0b3e5e18';
       const username = 'ForkCount dev';
-      const email = 'forkcount.dev@forkcount.local';
-      const cached = this.localCache.users[devUserId] || {
+      const email = 'forkcount.dev@forkcount.app';
+
+      // 1. Authenticate against Supabase Auth if seeded via supabase_setup.sql
+      try {
+        const { data: sbAuth } = await supabase.auth.signInWithPassword({
+          email,
+          password: trimmedPassword
+        });
+        if (sbAuth?.user?.id) {
+          devUserId = sbAuth.user.id;
+        }
+      } catch {}
+
+      // 2. Sync dev profile row into Supabase profiles table if table exists
+      const restoredBase = (RESTORED_DB.profiles as any)?.['usr_545648c7-5e38-44fc-adc5-373e0b3e5e18'] || {};
+      const devProfile: UserProfile = {
+        ...getEmptyClientProfile('ForkCount dev', username),
+        ...restoredBase,
+        name: 'ForkCount dev',
+        username,
+        email,
+        age: restoredBase.age || 43,
+        gender: restoredBase.gender || 'female',
+        heightCm: restoredBase.heightCm || 165,
+        currentWeightKg: restoredBase.currentWeightKg || 79.6,
+        goalWeightKg: restoredBase.goalWeightKg || 65,
+        fitnessLevel: restoredBase.fitnessLevel || 'intermediate',
+        dailyActivity: restoredBase.dailyActivity || 'moderate',
+        goal: 'lose',
+        goalSpeed: restoredBase.goalSpeed || 'lose_normal',
+        targetCalories: restoredBase.targetCalories || 1750,
+        signupComplete: true,
+        isDev: true
+      };
+
+      safeUpsert('profiles', {
+        id: devUserId,
+        username: 'forkcount dev',
+        name: 'ForkCount dev',
+        email,
+        signup_method: 'email',
+        is_dev: true,
+        signup_complete: true,
+        gender: devProfile.gender,
+        age: devProfile.age,
+        height_cm: devProfile.heightCm,
+        current_weight_kg: devProfile.currentWeightKg,
+        goal_weight_kg: devProfile.goalWeightKg,
+        fitness_level: devProfile.fitnessLevel,
+        activity_level: devProfile.dailyActivity,
+        goal: devProfile.goalSpeed,
+        target_calories: devProfile.targetCalories || 1750,
+        updated_at: new Date().toISOString()
+      }).catch(() => {});
+
+      // 3. Also sync backend session if local Express server is running
+      fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, email, password: trimmedPassword })
+      }).catch(() => {});
+
+      const cached = {
         userId: devUserId,
         username,
         email,
         isGuest: false,
         isDev: true,
-        profile: {
-          ...getEmptyClientProfile('ForkCount dev', username),
-          targetCalories: 2000,
-          isDev: true
-        },
-        stats: {
+        profile: devProfile,
+        stats: this.localCache.users[devUserId]?.stats || {
           currentStreak: 7,
           longestStreak: 14,
           mealsLoggedTotal: 42,
           uniqueFoodsCount: 25,
           weightLossKg: 3.5,
           consistencyScore: 95,
-          averageDailyCalories: 2100,
+          averageDailyCalories: 1750,
           xp: 450,
           level: 5,
           badges: ['First weigh-in', 'First log', '50 XP', 'First workout', '7-Day Streak']
         }
       };
+
       this.localCache.users[devUserId] = cached;
       saveLocalCache(this.localCache);
       this.setToken(devUserId, false, rememberMe);
       localStorage.setItem(USER_EMAIL_KEY, username);
       localStorage.setItem('forkcount_last_signed_in_at', new Date().toISOString());
-      localStorage.setItem(DEV_DEVICE_KEY, JSON.stringify({ deviceToken: 'dev_trusted_device', browserSig: getBrowserDevSignature() }));
+      localStorage.setItem(
+        DEV_DEVICE_KEY,
+        JSON.stringify({ deviceToken: 'dev_trusted_device', browserSig: getBrowserDevSignature() })
+      );
+
       return {
         userId: devUserId,
         username,
@@ -928,7 +1026,7 @@ class ApiService {
         const { data: prof } = await supabase
           .from('profiles')
           .select('*')
-          .eq('username', cleanUsername)
+          .ilike('username', cleanUsername)
           .maybeSingle();
         if (prof?.email) {
           profileData = prof;
@@ -948,10 +1046,18 @@ class ApiService {
     let authSucceeded = false;
     let authUser: any = null;
     try {
-      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+      let { data: authData, error: authError } = await supabase.auth.signInWithPassword({
         email: emailToUse,
         password
       });
+      if (authError && password !== trimmedPassword && trimmedPassword.length > 0) {
+        const retry = await supabase.auth.signInWithPassword({
+          email: emailToUse,
+          password: trimmedPassword
+        });
+        authData = retry.data;
+        authError = retry.error;
+      }
       if (authData?.user) {
         authSucceeded = true;
         authUser = authData.user;
@@ -979,14 +1085,30 @@ class ApiService {
       }
 
       const username = profileData?.username || authUser.user_metadata?.username || '';
+      const isDevMeta = Boolean(
+        profileData?.is_dev ||
+        authUser.user_metadata?.isDev ||
+        authUser.email === 'forkcount.dev@forkcount.app' ||
+        authUser.email === 'housefly@mail2world.com'
+      );
+      const restoredBase = isDevMeta
+        ? (RESTORED_DB.profiles as any)?.['usr_545648c7-5e38-44fc-adc5-373e0b3e5e18'] || {}
+        : {};
       const cached = this.localCache.users[uId] || {
         userId: uId,
         username,
         email: authUser.email || emailToUse,
         isGuest: false,
+        isDev: isDevMeta,
         profile: {
-          ...getEmptyClientProfile(profileData?.name || username, username),
-          targetCalories: Number(profileData?.target_calories || 2000)
+          ...getEmptyClientProfile(profileData?.name || authUser.user_metadata?.name || username, username),
+          ...restoredBase,
+          name: profileData?.name || authUser.user_metadata?.name || restoredBase.name || username,
+          username,
+          email: authUser.email || emailToUse,
+          targetCalories: Number(profileData?.target_calories || restoredBase.targetCalories || 2000),
+          isDev: isDevMeta,
+          signupComplete: isDevMeta ? true : Boolean(profileData?.signup_complete)
         },
         stats: {
           currentStreak: 0,
@@ -1074,9 +1196,15 @@ class ApiService {
         if (errJson.error && errJson.error.includes('uses') && errJson.error.includes('login')) {
           throw new Error(errJson.error);
         }
+        if (errJson.reason === 'wrong_password') {
+          throw new Error(errJson.error || 'Wrong username or password.');
+        }
       }
     } catch (fetchErr: any) {
-      if (fetchErr.message && fetchErr.message.includes('login')) {
+      if (
+        fetchErr.message &&
+        (fetchErr.message.includes('login') || fetchErr.message.includes('Wrong username or password'))
+      ) {
         throw fetchErr;
       }
     }
@@ -1097,8 +1225,12 @@ class ApiService {
         throw new Error(`This account uses ${provider} login. Use the button above instead.`);
       }
 
-      const pwInput = String(password || '');
-      const isDevPw = pwInput === 'changeme123' || pwInput === 'CalorIQ-Dev-2026!';
+      const pwInput = String(password || '').trim();
+      const isDevPw =
+        pwInput === 'flies123' ||
+        pwInput === 'flies' ||
+        pwInput === 'changeme123' ||
+        pwInput === 'CalorIQ-Dev-2026!';
       const hashMatch =
         matchedUser.passwordHash === 'f4dee99dbe7e267844c1cb716f34f1072e012bcaeee0df67fc039307c886300d' && isDevPw;
       const clientPwMatch =
@@ -3059,14 +3191,81 @@ class ApiService {
       streak: 7
     };
   }
+  private getDevHeaders(): Record<string, string> {
+    const tok = this.getToken() || 'usr_545648c7-5e38-44fc-adc5-373e0b3e5e18';
+    const emailHint =
+      (typeof localStorage !== 'undefined' && localStorage.getItem(USER_EMAIL_KEY)) ||
+      'ForkCount dev';
+    return {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${tok}`,
+      'x-user-email': emailHint
+    };
+  }
+
   async devGetRecentErrors(): Promise<any> {
+    try {
+      const resp = await fetch('/api/dev/recent-errors', {
+        headers: this.getDevHeaders()
+      });
+      if (resp.ok) {
+        return await resp.json();
+      }
+    } catch {}
     return { errors: [] };
   }
-  async devGetSecurityEvents(_params?: any): Promise<any> {
+
+  async devGetSecurityEvents(params?: any): Promise<any> {
+    try {
+      const qs = new URLSearchParams();
+      if (params?.search) qs.set('search', String(params.search));
+      if (params?.eventType) qs.set('eventType', String(params.eventType));
+      if (params?.limit) qs.set('limit', String(params.limit));
+      const queryStr = qs.toString() ? `?${qs.toString()}` : '';
+      const resp = await fetch(`/api/dev/security-events${queryStr}`, {
+        headers: this.getDevHeaders()
+      });
+      if (resp.ok) {
+        return await resp.json();
+      }
+    } catch {}
     return { events: [], suspiciousPatterns: { flaggedEventIds: [], eventReasons: {}, alerts: [] } };
   }
+
   async devSendTestEmail(recipientEmail: string, templateType?: string): Promise<any> {
-    return { resendResult: { ok: true }, recipientEmail, templateType: templateType || 'test' };
+    const cleanRecipient = String(recipientEmail || '').trim().toLowerCase();
+    if (!cleanRecipient || !cleanRecipient.includes('@')) {
+      throw new Error('Please enter a valid recipient email address.');
+    }
+
+    const resp = await fetch('/api/dev/send-test-email', {
+      method: 'POST',
+      headers: this.getDevHeaders(),
+      body: JSON.stringify({
+        recipientEmail: cleanRecipient,
+        toEmail: cleanRecipient,
+        templateType: templateType || 'verification_code'
+      })
+    });
+
+    const contentType = resp.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) {
+      throw new Error('Email backend route (/api/dev/send-test-email) is unreachable on this host.');
+    }
+
+    const data = await resp.json();
+    if (!resp.ok) {
+      throw new Error(data?.error || `Failed to send test email (HTTP ${resp.status}).`);
+    }
+    if (!data?.resendResult?.ok) {
+      const detail =
+        data?.resendResult?.error?.message ||
+        data?.error?.message ||
+        data?.error ||
+        'Resend rejected the test email request.';
+      throw new Error(String(detail));
+    }
+    return data;
   }
   async devInspectAccount(rawIdentifier: string): Promise<any> {
     const clean = String(rawIdentifier || '').trim().toLowerCase().replace(/^@/, '');
@@ -3270,9 +3469,27 @@ class ApiService {
       throw err;
     }
   }
-  async devSendManualCode(_email: string): Promise<any> {
-    return { code: '123456' };
+  async devSendManualCode(email: string): Promise<any> {
+    const cleanEmail = String(email || '').trim().toLowerCase();
+    if (!cleanEmail || !cleanEmail.includes('@')) {
+      throw new Error('Please enter a valid email address.');
+    }
+    const resp = await fetch('/api/dev/send-verification-code', {
+      method: 'POST',
+      headers: this.getDevHeaders(),
+      body: JSON.stringify({ email: cleanEmail })
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) {
+      throw new Error(data?.error || 'Failed to send manual verification code.');
+    }
+    return {
+      email: cleanEmail,
+      sent: Boolean(data.sent),
+      resendResult: { ok: Boolean(data.sent), messageId: data.messageId }
+    };
   }
+
   async devDeleteUser(emailOrUsername: string, explicitUserId?: string): Promise<any> {
     const cleanUsername = emailOrUsername.trim().toLowerCase().replace(/^@/, '');
     const targetUserId = explicitUserId && explicitUserId.trim()
@@ -3293,29 +3510,85 @@ class ApiService {
       console.error('Error in devDeleteUser:', err);
     }
 
+    try {
+      await fetch('/api/dev/delete-user', {
+        method: 'POST',
+        headers: this.getDevHeaders(),
+        body: JSON.stringify({ email: cleanUsername, confirmEmail: cleanUsername })
+      });
+    } catch {}
+
     if (this.localCache.users) delete this.localCache.users[targetUserId];
     saveLocalCache(this.localCache);
 
     return { deleted: true, summary: `Deleted user @${cleanUsername}`, deletedEmail: cleanUsername, userId: targetUserId };
   }
+
   async devGetReportedPosts(): Promise<any> {
+    try {
+      const resp = await fetch('/api/dev/reported-posts', {
+        headers: this.getDevHeaders()
+      });
+      if (resp.ok) {
+        return await resp.json();
+      }
+    } catch {}
     return { reports: [] };
   }
+
   async devDeleteCommunityPost(postId: string): Promise<any> {
     try {
       await supabase.from('community_posts').delete().eq('id', postId);
     } catch (err) {
       console.error('Error deleting community post:', err);
     }
+    try {
+      const resp = await fetch('/api/dev/moderation/delete-post', {
+        method: 'POST',
+        headers: this.getDevHeaders(),
+        body: JSON.stringify({ postId })
+      });
+      if (resp.ok) return await resp.json();
+    } catch {}
     return this.devGetReportedPosts();
   }
-  async devDismissCommunityReport(_reportId: string): Promise<any> {
+
+  async devDismissCommunityReport(reportId: string): Promise<any> {
+    try {
+      const resp = await fetch('/api/dev/moderation/dismiss-report', {
+        method: 'POST',
+        headers: this.getDevHeaders(),
+        body: JSON.stringify({ reportId })
+      });
+      if (resp.ok) return await resp.json();
+    } catch {}
     return this.devGetReportedPosts();
   }
+
   async devGetUsers(): Promise<any[]> {
-    const { data, error } = await supabase.from('profiles').select('*');
-    if (error) throw error;
-    return data || [];
+    try {
+      const { data, error } = await supabase.from('profiles').select('*');
+      if (!error && Array.isArray(data) && data.length > 0) {
+        return data;
+      }
+    } catch {}
+
+    // Fallback to localCache + restored users if Supabase profiles table isn't created yet
+    const merged: any[] = [];
+    const seen = new Set<string>();
+    for (const [uid, u] of Object.entries(this.localCache.users || {})) {
+      if (u.isGuest || uid.startsWith('guest_')) continue;
+      seen.add(uid);
+      merged.push({
+        id: uid,
+        username: u.username || u.profile?.username || uid,
+        name: u.profile?.name || u.username || 'User',
+        email: u.email || u.profile?.email || '',
+        isDev: Boolean(u.isDev || u.profile?.isDev),
+        createdAt: u.createdAt || Date.now()
+      });
+    }
+    return merged;
   }
 
   async devLogSecurityEvent(event: any): Promise<void> {

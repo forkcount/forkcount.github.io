@@ -85,6 +85,8 @@ export interface ResendDetailedResult {
   ok: boolean;
   messageId?: string;
   statusCode?: number;
+  deliveredTo?: string;
+  sandboxFallback?: boolean;
   response?: any;
   error?: any;
 }
@@ -96,6 +98,7 @@ async function postResendEmail(
   text: string,
   html: string
 ): Promise<{ response: Response; data: any }> {
+  const fromAddress = process.env.EMAIL_FROM || DEFAULT_FROM;
   const response = await safeOutboundFetch(RESEND_API_URL, {
     method: 'POST',
     headers: {
@@ -103,7 +106,7 @@ async function postResendEmail(
       'Content-Type': 'application/json'
     },
     body: JSON.stringify({
-      from: DEFAULT_FROM,
+      from: fromAddress,
       to: [to],
       subject,
       text,
@@ -158,8 +161,38 @@ export async function sendResendEmailDetailed(payload: {
         ok: true,
         messageId: data?.id,
         statusCode: response.status,
+        deliveredTo: payload.to,
+        sandboxFallback: false,
         response: data
       };
+    }
+
+    // Resend sandbox mode (onboarding@resend.dev without verified domain) only allows sending to the account owner email.
+    // Automatically route test/transactional emails to DEVELOPER_EMAIL with intended recipient noted in subject.
+    const errMsg = String(data?.message || '');
+    if (
+      response.status === 403 &&
+      errMsg.toLowerCase().includes('only send testing emails to your own email address') &&
+      payload.to.toLowerCase().trim() !== DEVELOPER_EMAIL.toLowerCase().trim()
+    ) {
+      const fallbackTo = DEVELOPER_EMAIL.toLowerCase().trim();
+      const fallbackResp = await postResendEmail(
+        apiKey,
+        fallbackTo,
+        `${payload.subject} (${payload.to})`,
+        `[Intended recipient: ${payload.to}]\n\n${payload.text}`,
+        payload.html
+      );
+      if (fallbackResp.response.ok) {
+        return {
+          ok: true,
+          messageId: fallbackResp.data?.id,
+          statusCode: fallbackResp.response.status,
+          deliveredTo: fallbackTo,
+          sandboxFallback: true,
+          response: fallbackResp.data
+        };
+      }
     }
 
     return {

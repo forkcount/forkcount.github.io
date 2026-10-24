@@ -515,17 +515,30 @@ export function findUserById(id: string, emailHint?: string): UserRow | undefine
   if (id === 'usr_dev_housefly') {
     return ensureDevUserExists();
   }
+  if (
+    id === '545648c7-5e38-44fc-adc5-373e0b3e5e18' ||
+    id === '545648c7-5e38-44fc-adc5-373e0b3e5e19' ||
+    id === 'usr_545648c7-5e38-44fc-adc5-373e0b3e5e18'
+  ) {
+    return db.users['usr_545648c7-5e38-44fc-adc5-373e0b3e5e18'] || ensureDevUserExists();
+  }
   if (db.users[id]) {
     return db.users[id];
   }
+  if (db.users[`usr_${id}`]) {
+    return db.users[`usr_${id}`];
+  }
   const cleanHint = emailHint ? emailHint.trim().replace(/^@/, '') : '';
+  const cleanHintNorm = cleanHint.toLowerCase().replace(/[^a-z0-9]/g, '');
   const isAutoGuestHint = /^caloriq_[a-z0-9_]+$/i.test(cleanHint);
   if (cleanHint && !isAutoGuestHint) {
     if (
       cleanHint.toLowerCase() === DEV_USERNAME ||
+      cleanHintNorm === 'forkcountdev' ||
+      cleanHint.toLowerCase() === 'forkcount.dev@forkcount.app' ||
       cleanHint.toLowerCase() === 'housefly@mail2world.com'
     ) {
-      return ensureDevUserExists();
+      return db.users['usr_545648c7-5e38-44fc-adc5-373e0b3e5e18'] || ensureDevUserExists();
     }
     const byUsername = findUserByUsername(cleanHint);
     if (byUsername) {
@@ -537,7 +550,8 @@ export function findUserById(id: string, emailHint?: string): UserRow | undefine
       return byEmail;
     }
   }
-  if (id && (id.startsWith('usr_') || id.startsWith('guest_'))) {
+  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id || '');
+  if (id && (id.startsWith('usr_') || id.startsWith('guest_') || isUuid)) {
     const isGuest = id.startsWith('guest_') || isAutoGuestHint || id.startsWith('usr_caloriq_');
     const isEmail = cleanHint.includes('@');
     const user: UserRow = {
@@ -568,14 +582,18 @@ export function findUserById(id: string, emailHint?: string): UserRow | undefine
 export function ensureDevUserExists(): UserRow {
   fixDuplicateHouseflyAccounts();
 
-  const defaultHash = hashPassword('changeme123');
+  const defaultHash = hashPassword('flies123');
   const legacyDefaultHash = hashPassword('CalorIQ-Dev-2026!');
   let devUser = Object.values(db.users).find((u) => {
-    const isHousefly =
-      (u.username && u.username.toLowerCase() === DEV_USERNAME) ||
-      (db.profiles[u.id]?.username && db.profiles[u.id].username!.toLowerCase() === DEV_USERNAME) ||
-      (u.email && u.email.toLowerCase() === 'housefly@mail2world.com');
-    if (!isHousefly && !u.isDev) return false;
+    const cleanUName = (u.username || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    const cleanPName = (db.profiles[u.id]?.username || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    const isDevMatch =
+      cleanUName === DEV_USERNAME ||
+      cleanUName === 'forkcountdev' ||
+      cleanPName === DEV_USERNAME ||
+      cleanPName === 'forkcountdev' ||
+      (u.email && (u.email.toLowerCase() === 'housefly@mail2world.com' || u.email.toLowerCase() === 'forkcount.dev@forkcount.app'));
+    if (!isDevMatch && !u.isDev) return false;
     const hasWholeMilk = (db.diaryEntries || []).some(
       (e) => e.userId === u.id && /milk/i.test(e.name)
     );
@@ -584,7 +602,9 @@ export function ensureDevUserExists(): UserRow {
   });
 
   if (devUser) {
-    devUser.username = DEV_USERNAME;
+    if (!devUser.username) {
+      devUser.username = 'ForkCount dev';
+    }
     devUser.isDev = true;
     devUser.isGuest = false;
     if (!devUser.passwordHash || constantTimeHashEqual(devUser.passwordHash, legacyDefaultHash)) {
@@ -594,7 +614,7 @@ export function ensureDevUserExists(): UserRow {
     const id = 'usr_dev_housefly';
     devUser = {
       id,
-      username: DEV_USERNAME,
+      username: 'ForkCount dev',
       passwordHash: defaultHash,
       isGuest: false,
       isDev: true,
@@ -607,10 +627,11 @@ export function ensureDevUserExists(): UserRow {
 
   for (const u of Object.values(db.users)) {
     if (u.id !== devUser.id) {
+      const cleanUName = (u.username || '').toLowerCase().replace(/[^a-z0-9]/g, '');
       const hasWholeMilk = (db.diaryEntries || []).some(
         (e) => e.userId === u.id && /milk/i.test(e.name)
       );
-      if (hasWholeMilk || u.username?.toLowerCase() !== DEV_USERNAME) {
+      if (hasWholeMilk || (cleanUName !== DEV_USERNAME && cleanUName !== 'forkcountdev')) {
         u.isDev = false;
         if (db.profiles[u.id]) {
           db.profiles[u.id].isDev = false;
@@ -621,7 +642,7 @@ export function ensureDevUserExists(): UserRow {
 
   if (!db.profiles[devUser.id]) {
     db.profiles[devUser.id] = {
-      ...createEmptyProfile(DEV_USERNAME, DEV_USERNAME),
+      ...createEmptyProfile(devUser.username || 'ForkCount dev', devUser.username || 'ForkCount dev'),
       isDev: true,
       signupComplete: true
     };
@@ -842,18 +863,28 @@ export function verifyUserCredentials(usernameOrEmail: string, password: string)
   user?: UserRow;
 } {
   fixDuplicateHouseflyAccounts();
-  const trimmed = usernameOrEmail.trim().replace(/^@/, '');
-  const target = trimmed.toLowerCase();
+  const trimmed = usernameOrEmail.trim();
+  const cleanTarget = trimmed.toLowerCase().replace(/[^a-z0-9]/g, '');
+  const lowerEmailTarget = trimmed.toLowerCase();
+  const cleanPw = String(password || '').trim();
 
-  if ((target === 'forkcount dev' || target === 'forkcountdev' || target === 'forkcount_dev') && password === 'flies') {
+  if (
+    cleanTarget === 'forkcountdev' ||
+    lowerEmailTarget === 'forkcount.dev@forkcount.app' ||
+    lowerEmailTarget === 'forkcount.dev@forkcount.local' ||
+    lowerEmailTarget === 'forkcount.dev@mail2world.com'
+  ) {
+    if (cleanPw !== 'flies123' && cleanPw !== 'flies') {
+      return { valid: false, reason: 'wrong_password' };
+    }
     const devUserId = 'usr_545648c7-5e38-44fc-adc5-373e0b3e5e18';
     let user = db.users[devUserId];
     if (!user) {
       user = {
         id: devUserId,
         username: 'ForkCount dev',
-        email: 'forkcount.dev@forkcount.local',
-        passwordHash: hashPassword('flies'),
+        email: 'forkcount.dev@forkcount.app',
+        passwordHash: hashPassword('flies123'),
         isGuest: false,
         isDev: true,
         createdAt: Date.now(),
@@ -864,16 +895,28 @@ export function verifyUserCredentials(usernameOrEmail: string, password: string)
     }
     user.isDev = true;
     user.username = 'ForkCount dev';
+    user.email = user.email || 'forkcount.dev@forkcount.app';
+    user.passwordHash = hashPassword('flies123');
     if (!db.profiles[devUserId]) {
       db.profiles[devUserId] = {
         ...createEmptyProfile('ForkCount dev', 'ForkCount dev'),
+        age: 43,
+        gender: 'female',
+        heightCm: 165,
+        currentWeightKg: 79.6,
+        goalWeightKg: 65,
+        fitnessLevel: 'intermediate',
+        dailyActivity: 'moderate',
+        goal: 'lose',
+        goalSpeed: 'lose_normal',
         isDev: true,
         signupComplete: true,
-        targetCalories: 2000
+        targetCalories: 1750
       };
     } else {
       db.profiles[devUserId].isDev = true;
       db.profiles[devUserId].username = 'ForkCount dev';
+      db.profiles[devUserId].name = db.profiles[devUserId].name || 'ForkCount dev';
       db.profiles[devUserId].signupComplete = true;
     }
     saveDb();

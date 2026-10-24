@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'forkcount-shell-v2.0.3';
+const CACHE_VERSION = 'forkcount-shell-v2.2.0';
 const APP_SHELL_ASSETS = [
   './',
   './index.html',
@@ -21,18 +21,26 @@ self.addEventListener('install', (event) => {
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(
-        keys.map((k) => {
-          if (k !== CACHE_VERSION) {
-            return caches.delete(k);
-          }
-          return Promise.resolve();
-        })
+    caches
+      .keys()
+      .then((keys) =>
+        Promise.all(
+          keys.map((k) => {
+            if (k !== CACHE_VERSION) {
+              return caches.delete(k);
+            }
+            return Promise.resolve();
+          })
+        )
       )
-    )
+      .then(() => self.clients.claim())
+      .then(() => self.clients.matchAll({ type: 'window' }))
+      .then((clients) => {
+        clients.forEach((client) => {
+          client.postMessage({ type: 'SW_UPDATED' });
+        });
+      })
   );
-  self.clients.claim();
 });
 
 self.addEventListener('message', (event) => {

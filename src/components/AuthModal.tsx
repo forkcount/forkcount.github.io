@@ -336,8 +336,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onAuthComplete }) => {
       return;
     }
 
-    if (!password || password.length < 6) {
-      setErrorMsg('Password must be at least 6 characters.');
+    const effectivePassword = mode === 'login' ? password.trim() : password;
+    const minPassLen = mode === 'login' ? 4 : 6;
+    if (!effectivePassword || effectivePassword.length < minPassLen) {
+      setErrorMsg(`Password must be at least ${minPassLen} characters.`);
       return;
     }
 
@@ -368,7 +370,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onAuthComplete }) => {
           setFlowStage('check_email');
         }
       } else {
-        await api.login(username.trim(), password, rememberMe);
+        await api.login(username.trim(), effectivePassword, rememberMe);
         await onAuthSuccess();
         const freshProfile = await api.getProfile();
         if (freshProfile.profile?.isDev || hasCompleteProfileStats(freshProfile.profile)) {

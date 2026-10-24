@@ -202,6 +202,8 @@ app.use(
           "'self'",
           "ws:",
           "wss:",
+          "https://*.supabase.co",
+          "wss://*.supabase.co",
           "https://*.firebaseio.com",
           "https://*.googleapis.com",
           "https://generativelanguage.googleapis.com",
@@ -448,8 +450,20 @@ const DEV_EMAIL = 'housefly@mail2world.com';
 
 function isDevAccountUser(user: any): boolean {
   if (!user || user.isGuest) return false;
-  if (user.isDev === true && String(user.username || '').toLowerCase().trim() === DEV_USERNAME) {
-    return true;
+  if (user.isDev === true) {
+    const cleanName = String(user.username || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    const cleanEmail = String(user.email || '').toLowerCase().trim();
+    if (
+      cleanName === DEV_USERNAME ||
+      cleanName === 'forkcountdev' ||
+      cleanEmail === 'forkcount.dev@forkcount.app' ||
+      cleanEmail === 'housefly@mail2world.com' ||
+      user.id === 'usr_545648c7-5e38-44fc-adc5-373e0b3e5e18' ||
+      user.id === '545648c7-5e38-44fc-adc5-373e0b3e5e18' ||
+      user.id === '545648c7-5e38-44fc-adc5-373e0b3e5e19'
+    ) {
+      return true;
+    }
   }
   return false;
 }
@@ -1202,7 +1216,7 @@ app.post('/api/auth/login', rateLimitAuth, async (req, res) => {
         summary: `Failed login for ${identifier} from ${ip}`,
         metadata: { reason: credCheck.reason || 'invalid_credentials' }
       });
-      res.status(400).json({ error: 'Wrong username or password.' });
+      res.status(400).json({ error: 'Wrong username or password.', reason: credCheck.reason || 'invalid_credentials' });
       return;
     }
 
@@ -2993,11 +3007,105 @@ app.post('/api/admin/save-usda-key', (req, res) => {
 });
 
 // ------------------- DEV MIDDLEWARE & STATIC SERVING -------------------
+async function syncSupabaseDevAccountIfConfigured() {
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const supabaseUrl = process.env.VITE_SUPABASE_URL || 'https://pyiljwilbxgkrkynmejg.supabase.co';
+  if (!serviceKey || !serviceKey.trim()) return;
+
+  try {
+    const { createClient } = await import('@supabase/supabase-js');
+    const sbAdmin = createClient(supabaseUrl, serviceKey.trim(), {
+      auth: { autoRefreshToken: false, persistSession: false }
+    });
+
+    const desiredAccounts = [
+      {
+        desiredId: '545648c7-5e38-44fc-adc5-373e0b3e5e18',
+        email: 'forkcount.dev@forkcount.app',
+        username: 'forkcount dev',
+        name: 'ForkCount dev'
+      },
+      {
+        desiredId: '545648c7-5e38-44fc-adc5-373e0b3e5e19',
+        email: 'housefly@mail2world.com',
+        username: 'housefly',
+        name: 'N'
+      }
+    ];
+
+    const { data: usersList } = await sbAdmin.auth.admin.listUsers();
+    const allUsers = usersList?.users || [];
+
+    // Remove unconfirmed test duplicate if present
+    const staleTest = allUsers.find((u) => u.email?.toLowerCase() === 'forkcount.dev@mail2world.com');
+    if (staleTest) {
+      await sbAdmin.auth.admin.deleteUser(staleTest.id).catch(() => {});
+    }
+
+    for (const acct of desiredAccounts) {
+      const existing = allUsers.find((u) => u.email?.toLowerCase() === acct.email);
+      let finalId = acct.desiredId;
+
+      if (existing && existing.id !== acct.desiredId) {
+        // Recreate with deterministic UUID matching supabase_setup.sql
+        await sbAdmin.auth.admin.deleteUser(existing.id).catch(() => {});
+        const { data: created } = await sbAdmin.auth.admin.createUser({
+          id: acct.desiredId,
+          email: acct.email,
+          password: 'flies123',
+          email_confirm: true,
+          user_metadata: { username: acct.username, name: acct.name, isDev: true }
+        });
+        finalId = created?.user?.id || acct.desiredId;
+      } else if (!existing) {
+        const { data: created } = await sbAdmin.auth.admin.createUser({
+          id: acct.desiredId,
+          email: acct.email,
+          password: 'flies123',
+          email_confirm: true,
+          user_metadata: { username: acct.username, name: acct.name, isDev: true }
+        });
+        finalId = created?.user?.id || acct.desiredId;
+      } else {
+        await sbAdmin.auth.admin.updateUserById(existing.id, {
+          password: 'flies123',
+          email_confirm: true,
+          user_metadata: { username: acct.username, name: acct.name, isDev: true }
+        });
+        finalId = existing.id;
+      }
+
+      await sbAdmin.from('profiles').upsert({
+        id: finalId,
+        username: acct.username,
+        name: acct.name,
+        email: acct.email,
+        signup_method: 'email',
+        is_dev: true,
+        signup_complete: true,
+        gender: 'female',
+        age: 43,
+        height_cm: 165,
+        current_weight_kg: 79.6,
+        goal_weight_kg: 65,
+        fitness_level: 'intermediate',
+        activity_level: 'moderate',
+        goal: 'lose_normal',
+        target_calories: 1750,
+        updated_at: new Date().toISOString()
+      });
+    }
+  } catch (err) {
+    console.warn('Supabase admin dev account seed notice:', err);
+  }
+}
+
 async function startServer() {
   try {
     fixDuplicateHouseflyAccounts();
+    await syncSupabaseDevAccountIfConfigured();
   } catch (err) {
-    console.error('Failed to run fixDuplicateHouseflyAccounts on startup:', err);
+    console.error('Failed to run startup account checks:', err);
   }
 
   if (process.env.NODE_ENV !== 'production') {
