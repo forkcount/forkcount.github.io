@@ -1,7 +1,6 @@
 import React, { useState, useEffect, Suspense } from 'react';
 import { Lock, Shield, Eye, EyeOff, RefreshCw } from 'lucide-react';
 import { AppProvider, useApp } from './context/AppContext.js';
-import { DevBanner } from './components/DevBanner.js';
 import { Navigation, TabType } from './components/Navigation.js';
 import { DiaryTab } from './components/DiaryTab.js';
 import { AuthModal } from './components/AuthModal.js';
@@ -217,7 +216,6 @@ const MainAppContent: React.FC<MainAppContentProps> = ({
           Offline — changes will sync when you&apos;re back online.
         </div>
       )}
-      <DevBanner />
       <div className="no-print">
         <Navigation
           currentTab={currentTab}

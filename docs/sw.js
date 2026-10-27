@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'forkcount-shell-v2.2.0';
+const CACHE_VERSION = 'forkcount-shell-v2.2.1';
 const APP_SHELL_ASSETS = [
   './',
   './index.html',
