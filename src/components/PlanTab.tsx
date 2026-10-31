@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   CalendarCheck,
-  Sparkles,
   ChevronRight,
   ChevronLeft,
   ChevronDown,
@@ -15,11 +14,15 @@ import {
   DollarSign,
   ChefHat,
   Users,
-  X,
-  Clock
+  X
 } from 'lucide-react';
 import { useApp } from '../context/AppContext.js';
 import { api } from '../services/api.js';
+import {
+  swapPlanMealFromMealDb,
+  splitMealDbInstructions,
+  isLegacyNonMealDbPlan
+} from '../utils/mealDbPlanner.js';
 import type { WeekPlan, PlanDayMeal } from '../types/index.js';
 
 export const PlanTab: React.FC = () => {
@@ -42,6 +45,7 @@ export const PlanTab: React.FC = () => {
 
   const [loggedMealIds, setLoggedMealIds] = useState<Set<string>>(new Set());
   const [loggedWorkoutDays, setLoggedWorkoutDays] = useState<Set<number>>(new Set());
+  const [swappingMealKey, setSwappingMealKey] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [selectedRecipeModal, setSelectedRecipeModal] = useState<{
     meal: PlanDayMeal;
@@ -51,7 +55,9 @@ export const PlanTab: React.FC = () => {
   const [recipeToast, setRecipeToast] = useState<string | null>(null);
 
   // Wizard Questions state
-  const [restrictions, setRestrictions] = useState<string[]>([]);
+  const [restrictions, setRestrictions] = useState<string[]>(() =>
+    Array.isArray(profile.restrictions) ? profile.restrictions : []
+  );
   const [allergies, setAllergies] = useState<string[]>([]);
   const [dislikes, setDislikes] = useState('');
   const [cookTime, setCookTime] = useState('15–30 min');
@@ -69,10 +75,16 @@ export const PlanTab: React.FC = () => {
   }, [profile.weeklyBudget]);
 
   useEffect(() => {
+    if (Array.isArray(profile.restrictions) && profile.restrictions.length > 0 && restrictions.length === 0) {
+      setRestrictions(profile.restrictions);
+    }
+  }, [profile.restrictions]);
+
+  useEffect(() => {
     async function loadPlan() {
       try {
         const res = await api.getPlan();
-        if (res.plan) {
+        if (res.plan && !isLegacyNonMealDbPlan(res.plan)) {
           setCachedPlan(res.plan);
         }
       } catch (err) {
@@ -92,9 +104,19 @@ export const PlanTab: React.FC = () => {
 
   const startWizard = (type: 'meals' | 'workouts' | 'both') => {
     setPlanType(type);
+    if (Array.isArray(profile.restrictions) && profile.restrictions.length > 0 && restrictions.length === 0) {
+      setRestrictions(profile.restrictions);
+    }
     setIsWizardOpen(true);
     setWizardStep(0);
   };
+
+  const effectiveCalorieTarget =
+    macroTarget.calories > 0
+      ? macroTarget.calories
+      : profile.targetCalories && profile.targetCalories > 0
+        ? profile.targetCalories
+        : 2000;
 
   const handleGenerate = async () => {
     setIsGenerating(true);
@@ -102,12 +124,16 @@ export const PlanTab: React.FC = () => {
     setErrorMsg(null);
 
     try {
+      if (restrictions.length > 0 || (Array.isArray(profile.restrictions) && profile.restrictions.length > 0)) {
+        updateUserProfile({ restrictions }).catch(() => {});
+      }
+
       const res = await api.generatePlan({
         type: planType,
-        dailyTargetCalories: macroTarget.calories,
-        dailyTargetCarbs: macroTarget.carbsGrams,
-        dailyTargetFat: macroTarget.fatGrams,
-        dailyTargetProtein: macroTarget.proteinGrams,
+        dailyTargetCalories: effectiveCalorieTarget,
+        dailyTargetCarbs: macroTarget.carbsGrams || Math.round((effectiveCalorieTarget * 0.4) / 4),
+        dailyTargetFat: macroTarget.fatGrams || Math.round((effectiveCalorieTarget * 0.3) / 9),
+        dailyTargetProtein: macroTarget.proteinGrams || Math.round((effectiveCalorieTarget * 0.3) / 4),
         preferences: {
           restrictions,
           allergies,
@@ -123,7 +149,7 @@ export const PlanTab: React.FC = () => {
       });
       setCachedPlan(res.plan);
     } catch (err: any) {
-      setErrorMsg(err.message || 'Could not generate plan');
+      setErrorMsg(err.message || 'Could not generate plan from TheMealDB');
     } finally {
       setIsGenerating(false);
     }
@@ -139,6 +165,7 @@ export const PlanTab: React.FC = () => {
   const currentDayPlan = cachedPlan?.days?.[todayIndex] || cachedPlan?.days?.[0];
 
   const handleLogPlanMeal = async (meal: PlanDayMeal, mealIndex: number, dayIdx: number = todayIndex) => {
+    if (meal.noMatchMessage) return;
     const key = `${dayIdx}-${mealIndex}-${meal.name}`;
     if (loggedMealIds.has(key)) return;
 
@@ -154,7 +181,7 @@ export const PlanTab: React.FC = () => {
       source: 'plan'
     });
 
-    setLoggedMealIds(prev => new Set([...prev, key]));
+    setLoggedMealIds((prev) => new Set([...prev, key]));
   };
 
   const handleLogPlanWorkout = async (dayIndex: number) => {
@@ -170,91 +197,52 @@ export const PlanTab: React.FC = () => {
       intensity: 'Moderate'
     });
 
-    setLoggedWorkoutDays(prev => new Set([...prev, dayIndex]));
+    setLoggedWorkoutDays((prev) => new Set([...prev, dayIndex]));
   };
 
-  // #51 Swap a meal — one tap on any planned meal replaces it with another fitting the same macros
-  const handleSwapMeal = (dayIdx: number, mealIdx: number) => {
+  // #51 Swap a meal — searches TheMealDB for another real recipe matching the slot & dietary filter
+  const handleSwapMeal = async (dayIdx: number, mealIdx: number) => {
     if (!cachedPlan) return;
-    const day = cachedPlan.days[dayIdx];
-    const oldMeal = day.meals[mealIdx];
+    const swapKey = `${dayIdx}-${mealIdx}`;
+    if (swappingMealKey === swapKey) return;
 
-    const alternatives = [
-      {
-        name: 'Grilled Herb Chicken & Sweet Potato',
-        ingredients: ['180g chicken breast', '200g sweet potato', '10ml olive oil', '100g broccoli'],
-        carbs: oldMeal.carbs,
-        fat: oldMeal.fat,
-        protein: oldMeal.protein,
-        aisle: 'meat' as const,
-        costEstimate: 4.5
-      },
-      {
-        name: 'Pan-Seared Salmon & Quinoa Bowl',
-        ingredients: ['160g salmon fillet', '150g cooked quinoa', '80g spinach', '1 lemon'],
-        carbs: oldMeal.carbs,
-        fat: oldMeal.fat,
-        protein: oldMeal.protein,
-        aisle: 'meat' as const,
-        costEstimate: 5.8
-      },
-      {
-        name: 'Crispy Tempeh & Brown Rice Stir-fry',
-        ingredients: ['150g tempeh', '160g brown rice', '120g mixed bell peppers', '15ml soy sauce'],
-        carbs: oldMeal.carbs,
-        fat: oldMeal.fat,
-        protein: oldMeal.protein,
-        aisle: 'produce' as const,
-        costEstimate: 3.6
-      },
-      {
-        name: 'Turkey Breast & Roasted Mediterranean Vegetables',
-        ingredients: ['175g turkey breast', '150g zucchini', '100g cherry tomatoes', '10ml olive oil'],
-        carbs: oldMeal.carbs,
-        fat: oldMeal.fat,
-        protein: oldMeal.protein,
-        aisle: 'meat' as const,
-        costEstimate: 4.2
-      },
-      {
-        name: 'Greek Yogurt Berry Protein Parfait',
-        ingredients: ['220g Greek yogurt', '80g mixed berries', '40g rolled oats', '15g almonds'],
-        carbs: oldMeal.carbs,
-        fat: oldMeal.fat,
-        protein: oldMeal.protein,
-        aisle: 'dairy' as const,
-        costEstimate: 3.2
+    setSwappingMealKey(swapKey);
+    setErrorMsg(null);
+    try {
+      const replacement = await swapPlanMealFromMealDb(
+        cachedPlan,
+        dayIdx,
+        mealIdx,
+        cachedPlan.targetCalories || effectiveCalorieTarget,
+        profile.restrictions
+      );
+      if (!replacement) {
+        setErrorMsg('No alternative TheMealDB recipe matched your dietary filter for this meal slot.');
+        return;
       }
-    ];
 
-    const seed = (dayIdx + mealIdx + oldMeal.name.length) % alternatives.length;
-    const alt = alternatives[seed].name === oldMeal.name
-      ? alternatives[(seed + 1) % alternatives.length]
-      : alternatives[seed];
+      const day = cachedPlan.days[dayIdx];
+      const updatedMeals = [...day.meals];
+      updatedMeals[mealIdx] = replacement;
 
-    const updatedMeals = [...day.meals];
-    updatedMeals[mealIdx] = {
-      ...oldMeal,
-      name: alt.name,
-      ingredients: alt.ingredients,
-      carbs: alt.carbs,
-      fat: alt.fat,
-      protein: alt.protein,
-      aisle: alt.aisle,
-      costEstimate: alt.costEstimate
-    };
-
-    const updatedDays = [...cachedPlan.days];
-    updatedDays[dayIdx] = { ...day, meals: updatedMeals };
-    const newPlan = { ...cachedPlan, days: updatedDays };
-    setCachedPlan(newPlan);
-    api.savePlan(newPlan);
+      const updatedDays = [...cachedPlan.days];
+      updatedDays[dayIdx] = { ...day, meals: updatedMeals };
+      const newPlan = { ...cachedPlan, days: updatedDays };
+      setCachedPlan(newPlan);
+      await api.savePlan(newPlan);
+    } catch {
+      setErrorMsg('Could not swap recipe from TheMealDB. Check your connection and try again.');
+    } finally {
+      setSwappingMealKey(null);
+    }
   };
 
   // #52 Helper to scale an ingredient string by servingsScale (1, 2, or 4)
   const scaleIngredientText = (raw: string, scale: number): string => {
     if (scale === 1) return raw;
-    const match = raw.match(/^(\d+(?:\.\d+)?)\s*(g|kg|ml|l|oz|tbsp|tsp|cup|cups|slice|slices|large|medium|small)?\s+(.*)$/i);
+    const match = raw.match(
+      /^(\d+(?:\.\d+)?)\s*(g|kg|ml|l|oz|lb|lbs|tbsp|tbs|tsp|cup|cups|slice|slices|can|cans|large|medium|small)?\s+(.*)$/i
+    );
     if (match) {
       const num = Math.round(parseFloat(match[1]) * scale * 10) / 10;
       const unit = match[2] || '';
@@ -267,7 +255,10 @@ export const PlanTab: React.FC = () => {
   // #48 Smart Grocery List — merges duplicate ingredients across the week's plan and groups by aisle
   const smartGroceryByAisle = useMemo(() => {
     if (!cachedPlan) return {};
-    const aisles: Record<string, Map<string, { name: string; totalGrams: number; totalCount: number; unit: string }>> = {
+    const aisles: Record<
+      string,
+      Map<string, { name: string; totalGrams: number; totalCount: number; unit: string }>
+    > = {
       produce: new Map(),
       dairy: new Map(),
       meat: new Map(),
@@ -312,7 +303,7 @@ export const PlanTab: React.FC = () => {
 
     const formatted: Record<string, string[]> = {};
     for (const [aisle, map] of Object.entries(aisles)) {
-      formatted[aisle] = Array.from(map.values()).map(item => {
+      formatted[aisle] = Array.from(map.values()).map((item) => {
         if (item.unit === 'g' || item.unit === 'ml' || item.unit === 'kg') {
           return `${Math.round(item.totalGrams)}${item.unit} ${item.name}`;
         }
@@ -331,16 +322,15 @@ export const PlanTab: React.FC = () => {
     let baseSum = 0;
     for (const day of cachedPlan.days) {
       for (const meal of day.meals) {
+        if (meal.noMatchMessage) continue;
         if (meal.costEstimate) {
           baseSum += meal.costEstimate;
         } else {
-          // Estimate based on meal calories and budget preference
           const perMeal = cachedPlan.preferences?.budget === 'Cheap' ? 2.8 : 4.1;
           baseSum += perMeal;
         }
       }
     }
-    // Scale by servings (with bulk efficiency factor)
     const scaleFactor = servingsScale === 1 ? 1 : servingsScale === 2 ? 1.85 : 3.5;
     return Math.round(baseSum * scaleFactor);
   }, [cachedPlan, servingsScale]);
@@ -348,9 +338,13 @@ export const PlanTab: React.FC = () => {
   // #50 Meal Prep Mode — Sunday batch-cook tasks for the week
   const sundayPrepBatches = useMemo(() => {
     if (!cachedPlan) return [];
-    const mealCounts = new Map<string, { name: string; count: number; mealType: string; prepTime: string; totalCalories: number }>();
+    const mealCounts = new Map<
+      string,
+      { name: string; count: number; mealType: string; prepTime: string; totalCalories: number }
+    >();
     for (const day of cachedPlan.days) {
       for (const meal of day.meals) {
+        if (meal.noMatchMessage) continue;
         const key = meal.name;
         const ex = mealCounts.get(key);
         if (ex) {
@@ -360,7 +354,7 @@ export const PlanTab: React.FC = () => {
             name: meal.name,
             count: servingsScale,
             mealType: meal.mealType,
-            prepTime: meal.prepTime || '20 min',
+            prepTime: meal.prepTime || 'Not specified',
             totalCalories: meal.calories
           });
         }
@@ -370,98 +364,154 @@ export const PlanTab: React.FC = () => {
   }, [cachedPlan, servingsScale]);
 
   const wizardQuestions = [
-    ...(planType === 'meals' || planType === 'both' ? [
-      {
-        title: "Anything you won't eat?",
-        subtitle: "Select any dietary principles you follow",
-        type: "multi",
-        options: ['Vegetarian', 'Vegan', 'Pescatarian', 'Halal', 'Kosher', 'No pork', 'No beef', 'No seafood', 'None'],
-        selected: restrictions,
-        onChange: (opt: string) => {
-          if (opt === 'None') {
-            setRestrictions([]);
-          } else {
-            setRestrictions(prev => prev.includes(opt) ? prev.filter(x => x !== opt) : [...prev.filter(x => x !== 'None'), opt]);
+    ...(planType === 'meals' || planType === 'both'
+      ? [
+          {
+            title: "Anything you won't eat?",
+            subtitle: 'Select any dietary principles or exclusions to filter TheMealDB recipes',
+            type: 'multi',
+            options: [
+              'Vegetarian',
+              'Vegan',
+              'Pescatarian',
+              'Halal',
+              'Kosher',
+              'No pork',
+              'No beef',
+              'No seafood',
+              'None'
+            ],
+            selected: restrictions,
+            onChange: (opt: string) => {
+              if (opt === 'None') {
+                setRestrictions([]);
+              } else {
+                setRestrictions((prev) =>
+                  prev.includes(opt)
+                    ? prev.filter((x) => x !== opt)
+                    : [...prev.filter((x) => x !== 'None'), opt]
+                );
+              }
+            }
+          },
+          {
+            title: 'Any allergies?',
+            subtitle: 'Strictly filtered out when searching TheMealDB',
+            type: 'multi',
+            options: ['Nuts', 'Dairy', 'Gluten', 'Eggs', 'Soy', 'Shellfish', 'None'],
+            selected: allergies,
+            onChange: (opt: string) => {
+              if (opt === 'None') {
+                setAllergies([]);
+              } else {
+                setAllergies((prev) =>
+                  prev.includes(opt)
+                    ? prev.filter((x) => x !== opt)
+                    : [...prev.filter((x) => x !== 'None'), opt]
+                );
+              }
+            }
+          },
+          {
+            title: 'Any specific ingredients to exclude?',
+            subtitle: 'Comma-separated ingredients to filter out (optional)',
+            type: 'text',
+            value: dislikes,
+            onChange: setDislikes,
+            placeholder: 'e.g. mushrooms, coriander, olives'
+          },
+          {
+            title: 'How long to cook?',
+            subtitle: 'Preferred kitchen preparation window',
+            type: 'single',
+            options: ['Under 15 min', '15–30 min', '30–60 min', 'Any'],
+            selected: cookTime,
+            onChange: setCookTime
+          },
+          {
+            title: 'Meals per day?',
+            subtitle: 'Breakfast 25%, Lunch 35%, Dinner 40% (adjusted if snacks are included)',
+            type: 'number-chips',
+            options: [3, 4, 5],
+            selected: mealsPerDay,
+            onChange: setMealsPerDay
+          },
+          {
+            title: 'Weekly Grocery Budget?',
+            subtitle: 'Ingredient budget target',
+            type: 'single',
+            options: ['Cheap', 'Moderate', 'Any'],
+            selected: budget,
+            onChange: setBudget
           }
-        }
-      },
-      {
-        title: "Any allergies?",
-        subtitle: "Strictly eliminated from your generated plan",
-        type: "multi",
-        options: ['Nuts', 'Dairy', 'Gluten', 'Eggs', 'Soy', 'Shellfish', 'None'],
-        selected: allergies,
-        onChange: (opt: string) => {
-          if (opt === 'None') {
-            setAllergies([]);
-          } else {
-            setAllergies(prev => prev.includes(opt) ? prev.filter(x => x !== opt) : [...prev.filter(x => x !== 'None'), opt]);
+        ]
+      : []),
+    ...(planType === 'workouts' || planType === 'both'
+      ? [
+          {
+            title: 'Workout days per week?',
+            subtitle: 'Active training days (remaining will be Rest & Recovery)',
+            type: 'number-chips',
+            options: [2, 3, 4, 5, 6],
+            selected: workoutDays,
+            onChange: setWorkoutDays
+          },
+          {
+            title: 'Available equipment?',
+            subtitle: 'Training gear you have immediate access to',
+            type: 'single',
+            options: ['None', 'Dumbbells', 'Full gym'],
+            selected: equipment,
+            onChange: setEquipment
+          },
+          {
+            title: 'Injuries or limitations?',
+            subtitle: 'Specify any movements to avoid (optional)',
+            type: 'text',
+            value: injuries,
+            onChange: setInjuries,
+            placeholder: 'e.g. lower back pain, knee rehab'
           }
-        }
-      },
-      {
-        title: "How long to cook?",
-        subtitle: "Target maximum kitchen preparation time",
-        type: "single",
-        options: ['Under 15 min', '15–30 min', '30–60 min', 'Any'],
-        selected: cookTime,
-        onChange: setCookTime
-      },
-      {
-        title: "Meals per day?",
-        subtitle: "How many meals to divide your daily calories across",
-        type: "number-chips",
-        options: [3, 4, 5],
-        selected: mealsPerDay,
-        onChange: setMealsPerDay
-      },
-      {
-        title: "Weekly Grocery Budget?",
-        subtitle: "Ingredient complexity and sourcing target",
-        type: "single",
-        options: ['Cheap', 'Moderate', 'Any'],
-        selected: budget,
-        onChange: setBudget
-      }
-    ] : []),
-    ...(planType === 'workouts' || planType === 'both' ? [
-      {
-        title: "Workout days per week?",
-        subtitle: "Active training days (remaining will be Rest & Recovery)",
-        type: "number-chips",
-        options: [2, 3, 4, 5, 6],
-        selected: workoutDays,
-        onChange: setWorkoutDays
-      },
-      {
-        title: "Available equipment?",
-        subtitle: "Training gear you have immediate access to",
-        type: "single",
-        options: ['None', 'Dumbbells', 'Full gym'],
-        selected: equipment,
-        onChange: setEquipment
-      },
-      {
-        title: "Injuries or limitations?",
-        subtitle: "Specify any movements to avoid (optional)",
-        type: "text",
-        value: injuries,
-        onChange: setInjuries,
-        placeholder: "e.g. lower back pain, knee rehab"
-      }
-    ] : []),
+        ]
+      : []),
     {
-      title: "Anything else you want to narrow this down?",
-      subtitle: "e.g. high protein, low carb, no eggs, 30-minute workouts.",
-      type: "text",
+      title: 'Anything else you want to narrow this down?',
+      subtitle: 'e.g. no eggs, no beef, 30-minute workouts.',
+      type: 'text',
       value: narrowingText,
       onChange: setNarrowingText,
-      placeholder: "e.g. high protein, low carb, no eggs, 30-minute workouts"
+      placeholder: 'e.g. no eggs, no mushrooms'
     }
   ];
 
+  const modalSteps = useMemo(() => {
+    if (!selectedRecipeModal) return [];
+    const { meal } = selectedRecipeModal;
+    if (meal.rawInstructions && meal.rawInstructions.trim()) {
+      return splitMealDbInstructions(meal.rawInstructions);
+    }
+    if (Array.isArray(meal.instructions) && meal.instructions.length > 0) {
+      return meal.instructions;
+    }
+    return [];
+  }, [selectedRecipeModal]);
+
+  const modalIngredients = useMemo(() => {
+    if (!selectedRecipeModal) return [];
+    const { meal } = selectedRecipeModal;
+    if (Array.isArray(meal.ingredientItems) && meal.ingredientItems.length > 0) {
+      return meal.ingredientItems.map((item) => {
+        const combined = item.measure && item.measure !== 'To taste'
+          ? `${item.measure} ${item.ingredient}`.replace(/\s+/g, ' ').trim()
+          : `${item.ingredient}${item.measure === 'To taste' ? ' (to taste)' : ''}`;
+        return scaleIngredientText(combined, servingsScale);
+      });
+    }
+    return (meal.ingredients || []).map((ing) => scaleIngredientText(ing, servingsScale));
+  }, [selectedRecipeModal, servingsScale]);
+
   return (
-    <div className="space-y-5 pb-8 max-w-md mx-auto">
+    <div className="space-y-5 pb-20 max-w-md mx-auto">
       {errorMsg && (
         <div className="p-3 bg-rose-950/40 border border-rose-800/50 rounded-xl text-xs text-rose-300">
           {errorMsg}
@@ -469,10 +519,10 @@ export const PlanTab: React.FC = () => {
       )}
 
       {/* INITIAL PROMPT: "Want us to plan your week?" */}
-      {!cachedPlan && !declinedPlan && !isWizardOpen && (
+      {!cachedPlan && !declinedPlan && !isWizardOpen && !isGenerating && (
         <div className="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-6 text-center shadow-xl space-y-4">
           <div className="w-12 h-12 rounded-2xl bg-teal-500/10 border border-teal-500/20 text-teal-400 flex items-center justify-center mx-auto">
-            <Sparkles className="w-6 h-6" />
+            <Utensils className="w-6 h-6" />
           </div>
 
           <div>
@@ -480,7 +530,8 @@ export const PlanTab: React.FC = () => {
               Want us to plan your week?
             </h3>
             <p className="text-xs text-zinc-400 mt-1 max-w-xs mx-auto leading-relaxed">
-              We&apos;ll generate a tailored 7-day schedule hitting your {macroTarget.calories} kcal goal within 5%.
+              Build a 7-day plan using real recipes searched from TheMealDB matched to your{' '}
+              {effectiveCalorieTarget} kcal daily target, with a relaxed comfort dinner on Sunday.
             </p>
           </div>
 
@@ -501,8 +552,8 @@ export const PlanTab: React.FC = () => {
               onClick={() => startWizard('both')}
               className="col-span-2 p-3 bg-teal-500 hover:bg-teal-400 text-zinc-950 font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 transition-colors shadow-lg shadow-teal-500/20"
             >
-              <Sparkles className="w-4 h-4" />
-              Plan both
+              <CalendarCheck className="w-4 h-4" />
+              Generate Plan
             </button>
             <button
               onClick={() => setDeclinedPlan(true)}
@@ -515,7 +566,7 @@ export const PlanTab: React.FC = () => {
       )}
 
       {/* NOT NOW SELECTED */}
-      {!cachedPlan && declinedPlan && !isWizardOpen && (
+      {!cachedPlan && declinedPlan && !isWizardOpen && !isGenerating && (
         <div className="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-6 text-center shadow-xl space-y-3">
           <CalendarCheck className="w-8 h-8 text-zinc-600 mx-auto" />
           <p className="text-xs text-zinc-400">
@@ -528,7 +579,7 @@ export const PlanTab: React.FC = () => {
             }}
             className="px-4 py-2 bg-teal-500/15 hover:bg-teal-500/25 border border-teal-500/30 text-teal-300 text-xs font-semibold rounded-xl transition-colors"
           >
-            Create 7-Day Plan
+            Generate Plan
           </button>
         </div>
       )}
@@ -566,6 +617,7 @@ export const PlanTab: React.FC = () => {
                     return (
                       <button
                         key={opt}
+                        type="button"
                         onClick={() => wizardQuestions[wizardStep].onChange(opt)}
                         className={`px-3 py-2 rounded-xl text-xs font-medium border transition-colors ${
                           isSel
@@ -587,6 +639,7 @@ export const PlanTab: React.FC = () => {
                     return (
                       <button
                         key={opt}
+                        type="button"
                         onClick={() => wizardQuestions[wizardStep].onChange(opt)}
                         className={`p-3 rounded-xl text-xs font-medium border transition-colors ${
                           isSel
@@ -608,6 +661,7 @@ export const PlanTab: React.FC = () => {
                     return (
                       <button
                         key={num}
+                        type="button"
                         onClick={() => wizardQuestions[wizardStep].onChange(num)}
                         className={`flex-1 py-3 rounded-xl text-sm font-bold font-mono border transition-colors ${
                           isSel
@@ -637,10 +691,11 @@ export const PlanTab: React.FC = () => {
             </div>
           </div>
 
-          <div className="flex items-center justify-between pt-3 border-t border-zinc-800 shrink-0">
+          <div className="flex items-center justify-between gap-2 pt-3 border-t border-zinc-800 shrink-0">
             {wizardStep > 0 ? (
               <button
-                onClick={() => setWizardStep(s => s - 1)}
+                type="button"
+                onClick={() => setWizardStep((s) => s - 1)}
                 className="px-3 py-2 text-xs font-medium text-zinc-400 hover:text-zinc-200 flex items-center gap-1"
               >
                 <ChevronLeft className="w-4 h-4" />
@@ -650,33 +705,37 @@ export const PlanTab: React.FC = () => {
               <div />
             )}
 
-            {wizardStep < wizardQuestions.length - 1 ? (
+            <div className="flex items-center gap-2">
+              {wizardStep < wizardQuestions.length - 1 && (
+                <button
+                  type="button"
+                  onClick={() => setWizardStep((s) => s + 1)}
+                  className="px-3.5 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-semibold rounded-xl flex items-center gap-1 transition-colors"
+                >
+                  Next
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              )}
+
               <button
-                onClick={() => setWizardStep(s => s + 1)}
-                className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-semibold rounded-xl flex items-center gap-1 transition-colors"
-              >
-                Skip / Next
-                <ChevronRight className="w-4 h-4" />
-              </button>
-            ) : (
-              <button
+                type="button"
                 onClick={handleGenerate}
                 disabled={isGenerating}
                 className="px-4 py-2 bg-teal-500 hover:bg-teal-400 disabled:opacity-50 text-zinc-950 text-xs font-bold rounded-xl flex items-center gap-1.5 transition-colors shadow-lg shadow-teal-500/20"
               >
-                <Sparkles className="w-4 h-4" />
-                {isGenerating ? 'Calculating...' : 'Generate 7-Day Plan'}
+                <CalendarCheck className="w-4 h-4" />
+                {isGenerating ? 'Searching TheMealDB...' : 'Generate Plan'}
               </button>
-            )}
+            </div>
           </div>
         </div>
       )}
 
-      {/* GENERATING STATE (#13 grey shimmer placeholder the shape of the content) */}
+      {/* GENERATING STATE */}
       {isGenerating && (
-        <div className="space-y-4 animate-pulse" aria-label="Loading weekly plan">
+        <div className="space-y-4 animate-pulse" aria-label="Searching TheMealDB recipes">
           <div className="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-5 space-y-3">
-            <div className="h-4 w-44 bg-zinc-800 rounded-lg" />
+            <div className="h-4 w-48 bg-zinc-800 rounded-lg" />
             <div className="h-3 w-64 bg-zinc-800/70 rounded-lg" />
             <div className="h-2 w-full bg-zinc-800 rounded-full" />
           </div>
@@ -690,7 +749,7 @@ export const PlanTab: React.FC = () => {
       )}
 
       {/* PLAN TAB AFTER GENERATION */}
-      {cachedPlan && !isGenerating && (
+      {cachedPlan && !isGenerating && !isWizardOpen && (
         <div className="space-y-5">
           {/* #55 Alert when plan is older than 7 days */}
           {isPlanFromLastWeek && (
@@ -716,7 +775,6 @@ export const PlanTab: React.FC = () => {
 
           {/* Header controls: #52 Scale Servings, #50 Meal Prep Mode, #48 Smart Grocery List & Regenerate */}
           <div className="flex flex-wrap items-center justify-between gap-2">
-            {/* #52 Scale servings selector (1, 2, 4) */}
             <div className="flex items-center gap-1.5 bg-zinc-900 border border-zinc-800 rounded-xl px-2.5 py-1">
               <Users className="w-3.5 h-3.5 text-teal-400" />
               <span className="text-[11px] text-zinc-400">Servings:</span>
@@ -767,10 +825,10 @@ export const PlanTab: React.FC = () => {
                 type="button"
                 onClick={() => startWizard(cachedPlan.type || 'both')}
                 className="px-2.5 py-1.5 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 hover:text-zinc-100 rounded-xl text-xs font-semibold flex items-center gap-1 transition-colors"
-                title="Regenerate week"
+                title="Generate Plan"
               >
                 <RefreshCw className="w-3.5 h-3.5 text-teal-400" />
-                Regenerate week
+                Generate Plan
               </button>
             </div>
           </div>
@@ -785,7 +843,9 @@ export const PlanTab: React.FC = () => {
                     Weekly Grocery Budget Tracker ({servingsScale}× Servings)
                   </span>
                   <span className="text-[10px] text-zinc-500">
-                    Estimated cost: <strong className="text-zinc-200 font-mono">${estimatedWeeklyCost}</strong> / ${weeklyBudgetLimit} budget
+                    Estimated cost:{' '}
+                    <strong className="text-zinc-200 font-mono">${estimatedWeeklyCost}</strong> / $
+                    {weeklyBudgetLimit} budget
                   </span>
                 </div>
               </div>
@@ -810,7 +870,9 @@ export const PlanTab: React.FC = () => {
                 className={`h-full rounded-full transition-all ${
                   estimatedWeeklyCost > weeklyBudgetLimit ? 'bg-rose-500' : 'bg-teal-500'
                 }`}
-                style={{ width: `${Math.min(100, Math.round((estimatedWeeklyCost / (weeklyBudgetLimit || 1)) * 100))}%` }}
+                style={{
+                  width: `${Math.min(100, Math.round((estimatedWeeklyCost / (weeklyBudgetLimit || 1)) * 100))}%`
+                }}
               />
             </div>
           </div>
@@ -821,14 +883,16 @@ export const PlanTab: React.FC = () => {
               <div className="flex items-center justify-between border-b border-zinc-800 pb-2">
                 <div className="flex items-center gap-2">
                   <ChefHat className="w-4 h-4 text-teal-400" />
-                  <span className="text-xs font-bold text-teal-400 uppercase tracking-wider">
+                  <span className="text-xs font-semibold text-teal-400">
                     Sunday Meal Prep Batch Guide
                   </span>
                 </div>
-                <span className="text-[11px] font-mono text-zinc-400">For {servingsScale} person(s)</span>
+                <span className="text-[11px] font-mono text-zinc-400">
+                  For {servingsScale} person(s)
+                </span>
               </div>
               <p className="text-xs text-zinc-400">
-                Batch-cook these core components on Sunday to assemble your week&apos;s meals in under 10 minutes:
+                Batch-cook these TheMealDB recipes on Sunday to streamline your week:
               </p>
               <div className="space-y-2">
                 {sundayPrepBatches.map((batch, idx) => (
@@ -842,8 +906,8 @@ export const PlanTab: React.FC = () => {
                         {batch.mealType} · Prep time: {batch.prepTime}
                       </span>
                     </div>
-                    <span className="px-2 py-1 rounded-lg bg-teal-500/15 border border-teal-500/30 text-teal-300 font-mono text-[11px] font-bold">
-                      Prep {batch.count} portions
+                    <span className="font-mono text-[11px] font-semibold text-teal-300">
+                      {batch.count} portions
                     </span>
                   </div>
                 ))}
@@ -851,11 +915,11 @@ export const PlanTab: React.FC = () => {
             </div>
           )}
 
-          {/* #48 SMART GROCERY LIST (Merges duplicate ingredients & groups by aisle) */}
+          {/* #48 SMART GROCERY LIST */}
           {showShoppingList && (
             <div className="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-5 shadow-xl space-y-3">
               <div className="flex items-center justify-between border-b border-zinc-800 pb-2">
-                <span className="text-xs font-bold text-teal-400 uppercase tracking-wider">
+                <span className="text-xs font-semibold text-teal-400">
                   Smart Grocery List (Merged &amp; Scaled {servingsScale}×)
                 </span>
                 <span className="text-[11px] text-zinc-500">By Aisle</span>
@@ -865,7 +929,7 @@ export const PlanTab: React.FC = () => {
                 if (!items || items.length === 0) return null;
                 return (
                   <div key={aisle} className="space-y-1">
-                    <span className="text-[11px] font-bold text-zinc-300 capitalize tracking-wide block">
+                    <span className="text-[11px] font-semibold text-zinc-300 capitalize block">
                       {aisle}
                     </span>
                     <div className="flex flex-wrap gap-1.5">
@@ -889,7 +953,7 @@ export const PlanTab: React.FC = () => {
             <div className="bg-zinc-900/90 border border-teal-500/30 rounded-2xl p-5 shadow-xl space-y-4">
               <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
                 <div>
-                  <span className="text-[10px] font-bold text-teal-400 uppercase tracking-wider block">
+                  <span className="text-[11px] font-medium text-teal-400 block">
                     Today&apos;s Schedule
                   </span>
                   <h3 className="text-base font-bold text-zinc-100">
@@ -897,106 +961,159 @@ export const PlanTab: React.FC = () => {
                   </h3>
                 </div>
                 <div className="text-right">
-                  <span className="text-xs font-mono text-zinc-400">
+                  <span className="text-xs font-mono tabular-nums text-zinc-400 block">
                     {currentDayPlan.meals.reduce((s, m) => s + m.calories, 0)} kcal / person
+                  </span>
+                  <span className="text-[10px] text-zinc-500">
+                    Recipes from TheMealDB
                   </span>
                 </div>
               </div>
 
               {/* Today's Meals */}
-              <div className="space-y-2.5">
-                <span className="text-xs font-semibold text-zinc-300 flex items-center gap-1.5">
-                  <Utensils className="w-3.5 h-3.5 text-teal-400" />
-                  Planned Meals ({servingsScale}× Servings)
-                </span>
+              {currentDayPlan.meals.length > 0 && (
+                <div className="space-y-2.5">
+                  <span className="text-xs font-semibold text-zinc-300 flex items-center gap-1.5">
+                    <Utensils className="w-3.5 h-3.5 text-teal-400" />
+                    Planned Meals ({servingsScale}× Servings)
+                  </span>
 
-                {currentDayPlan.meals.map((meal, mIdx) => {
-                  const key = `${todayIndex}-${mIdx}-${meal.name}`;
-                  const isLogged = loggedMealIds.has(key);
+                  {currentDayPlan.meals.map((meal, mIdx) => {
+                    const key = `${todayIndex}-${mIdx}-${meal.name}`;
+                    const isLogged = loggedMealIds.has(key);
+                    const isSwapping = swappingMealKey === `${todayIndex}-${mIdx}`;
 
-                  return (
-                    <div
-                      key={mIdx}
-                      onClick={() => setSelectedRecipeModal({ meal, dayIdx: todayIndex, mealIdx: mIdx })}
-                      className="p-3 bg-zinc-950/80 border border-zinc-800 rounded-xl space-y-2 cursor-pointer hover:border-zinc-700 transition-colors"
-                    >
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="max-w-[65%]">
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-[10px] text-teal-400 font-medium uppercase">
-                              {meal.mealType}
-                            </span>
-                            <span className="text-[10px] text-zinc-500">· {meal.prepTime}</span>
+                    if (meal.noMatchMessage) {
+                      return (
+                        <div
+                          key={mIdx}
+                          className="p-3 bg-zinc-950/80 border border-zinc-800 rounded-xl space-y-1.5"
+                        >
+                          <div className="text-[10px] text-teal-400 font-medium capitalize">
+                            {meal.mealType}
                           </div>
-                          <span className="text-xs font-medium text-zinc-200 block truncate">
-                            {meal.name}
-                          </span>
-                          <div className="text-[10px] text-zinc-500 font-mono mt-0.5">
-                            <span className="text-teal-400 font-semibold">{Math.round(meal.calories * servingsScale)} kcal</span>
-                            <span> · {Math.round(meal.protein * servingsScale)}p {Math.round(meal.carbs * servingsScale)}c {Math.round(meal.fat * servingsScale)}f</span>
+                          <p className="text-xs text-zinc-300 font-medium">{meal.name}</p>
+                          <p className="text-[11px] text-zinc-400">{meal.noMatchMessage}</p>
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <div
+                        key={mIdx}
+                        onClick={() =>
+                          setSelectedRecipeModal({ meal, dayIdx: todayIndex, mealIdx: mIdx })
+                        }
+                        className="p-3 bg-zinc-950/80 border border-zinc-800 rounded-xl space-y-2 cursor-pointer hover:border-zinc-700 transition-colors"
+                      >
+                        <div className="flex items-center justify-between gap-2.5">
+                          <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                            {meal.imageUrl && (
+                              <img
+                                src={meal.imageUrl}
+                                alt={meal.name}
+                                loading="lazy"
+                                className="w-12 h-12 rounded-lg object-cover shrink-0 border border-zinc-800"
+                              />
+                            )}
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-1.5 text-[10px] text-zinc-400">
+                                <span className="text-teal-400 font-semibold capitalize">
+                                  {meal.mealType}
+                                </span>
+                                {meal.category && (
+                                  <>
+                                    <span aria-hidden="true">·</span>
+                                    <span>{meal.category}</span>
+                                  </>
+                                )}
+                              </div>
+                              <span className="text-xs font-medium text-zinc-100 block truncate">
+                                {meal.name}
+                              </span>
+                              <div className="text-[10px] text-zinc-500 font-mono tabular-nums mt-0.5">
+                                <span className="text-teal-400 font-semibold">
+                                  {Math.round(meal.calories * servingsScale)} kcal
+                                </span>
+                                <span>
+                                  {' '}
+                                  · {Math.round(meal.protein * servingsScale)}p{' '}
+                                  {Math.round(meal.carbs * servingsScale)}c{' '}
+                                  {Math.round(meal.fat * servingsScale)}f
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleSwapMeal(todayIndex, mIdx);
+                              }}
+                              disabled={isSwapping}
+                              className="px-2 py-1.5 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 hover:text-teal-300 rounded-lg text-[11px] flex items-center gap-1 transition-colors disabled:opacity-50"
+                              title="Swap with another TheMealDB recipe"
+                            >
+                              <RefreshCw className={`w-3 h-3 ${isSwapping ? 'animate-spin' : ''}`} />
+                              Swap
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleLogPlanMeal(meal, mIdx);
+                              }}
+                              disabled={isLogged}
+                              className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1 transition-colors ${
+                                isLogged
+                                  ? 'bg-zinc-800 text-teal-400 border border-teal-500/30'
+                                  : 'bg-teal-500 hover:bg-teal-400 text-zinc-950 shadow-sm shadow-teal-500/20'
+                              }`}
+                            >
+                              {isLogged ? (
+                                <>
+                                  <CheckCircle2 className="w-3.5 h-3.5" />
+                                  Logged
+                                </>
+                              ) : (
+                                <>
+                                  <Plus className="w-3.5 h-3.5" />
+                                  Log
+                                </>
+                              )}
+                            </button>
                           </div>
                         </div>
 
-                        <div className="flex items-center gap-1.5">
-                          {/* #51 Swap a meal */}
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleSwapMeal(todayIndex, mIdx);
-                            }}
-                            className="px-2 py-1.5 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 hover:text-teal-300 rounded-lg text-[11px] flex items-center gap-1 transition-colors"
-                            title="Swap meal with another matching macros"
-                          >
-                            <RefreshCw className="w-3 h-3" />
-                            Swap
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleLogPlanMeal(meal, mIdx);
-                            }}
-                            disabled={isLogged}
-                            className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1 transition-colors ${
-                              isLogged
-                                ? 'bg-zinc-800 text-teal-400 border border-teal-500/30'
-                                : 'bg-teal-500 hover:bg-teal-400 text-zinc-950 shadow-sm shadow-teal-500/20'
+                        {meal.calorieNote && (
+                          <p
+                            className={`text-[11px] ${
+                              meal.isSundayTreat ? 'text-amber-300' : 'text-zinc-400'
                             }`}
                           >
-                            {isLogged ? (
-                              <>
-                                <CheckCircle2 className="w-3.5 h-3.5" />
-                                Logged
-                              </>
-                            ) : (
-                              <>
-                                <Plus className="w-3.5 h-3.5" />
-                                Log
-                              </>
-                            )}
-                          </button>
-                        </div>
-                      </div>
+                            {meal.calorieNote}
+                          </p>
+                        )}
 
-                      {/* #52 Scaled ingredients preview */}
-                      {meal.ingredients && meal.ingredients.length > 0 && (
-                        <div className="flex flex-wrap gap-1 pt-1 border-t border-zinc-900">
-                          {meal.ingredients.map((ing, iIdx) => (
-                            <span
-                              key={iIdx}
-                              className="px-1.5 py-0.5 rounded bg-zinc-900 text-[10px] text-zinc-400 font-mono"
-                            >
-                              {scaleIngredientText(ing, servingsScale)}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
+                        {meal.ingredients && meal.ingredients.length > 0 && (
+                          <div className="text-[11px] text-zinc-400 pt-1.5 border-t border-zinc-900 truncate">
+                            {meal.ingredients
+                              .slice(0, 4)
+                              .map((ing) => scaleIngredientText(ing, servingsScale))
+                              .join(' · ')}
+                            {meal.ingredients.length > 4
+                              ? ` · +${meal.ingredients.length - 4} more`
+                              : ''}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
 
               {/* Today's Workout */}
               {currentDayPlan.workout && (
@@ -1008,6 +1125,7 @@ export const PlanTab: React.FC = () => {
                     </span>
                     {!currentDayPlan.workout.isRest && (
                       <button
+                        type="button"
                         onClick={() => handleLogPlanWorkout(todayIndex)}
                         disabled={loggedWorkoutDays.has(todayIndex)}
                         className={`px-3 py-1 rounded-lg text-xs font-semibold flex items-center gap-1 transition-colors ${
@@ -1047,14 +1165,18 @@ export const PlanTab: React.FC = () => {
 
           {/* "THIS WEEK" EXPANDABLE SECTION */}
           <div className="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-5 shadow-xl space-y-3">
-            <h4 className="text-xs font-semibold text-zinc-300 uppercase tracking-wider">
-              This Week Overview
-            </h4>
+            <div className="flex items-center justify-between">
+              <h4 className="text-xs font-semibold text-zinc-200">
+                7-Day Schedule (Monday – Sunday)
+              </h4>
+              <span className="text-[11px] text-zinc-500">Recipe from TheMealDB</span>
+            </div>
 
             <div className="space-y-2">
               {cachedPlan.days.map((day, dIdx) => {
                 const isExpanded = expandedDay === dIdx;
                 const dayKcal = day.meals.reduce((s, m) => s + m.calories, 0);
+                const hasSundayTreat = day.meals.some((m) => m.isSundayTreat);
 
                 return (
                   <div
@@ -1062,83 +1184,153 @@ export const PlanTab: React.FC = () => {
                     className="border border-zinc-800/80 rounded-xl overflow-hidden bg-zinc-950/60"
                   >
                     <button
+                      type="button"
                       onClick={() => setExpandedDay(isExpanded ? null : dIdx)}
-                      className="w-full p-3 flex items-center justify-between text-left hover:bg-zinc-850/50 transition-colors"
+                      className="w-full p-3 flex items-center justify-between text-left hover:bg-zinc-900/60 transition-colors"
                     >
-                      <div className="flex items-center gap-2">
-                        <span className="font-semibold text-xs text-zinc-200">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="font-semibold text-xs text-zinc-100">
                           {day.dayName}
                         </span>
-                        {day.workout && (
-                          <span className="text-[10px] px-2 py-0.5 rounded bg-zinc-900 text-teal-400 border border-zinc-800">
-                            {day.workout.isRest ? 'Rest' : day.workout.name}
+                        {hasSundayTreat && (
+                          <span className="text-[11px] text-amber-300/90 truncate">
+                            · Sunday treat
+                          </span>
+                        )}
+                        {day.workout && !hasSundayTreat && (
+                          <span className="text-[11px] text-zinc-500 truncate">
+                            · {day.workout.isRest ? 'Rest' : day.workout.name}
                           </span>
                         )}
                       </div>
 
-                      <div className="flex items-center gap-2 text-xs font-mono text-zinc-400">
+                      <div className="flex items-center gap-2 text-xs font-mono tabular-nums text-zinc-400 shrink-0">
                         <span>{dayKcal} kcal</span>
-                        {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                        {isExpanded ? (
+                          <ChevronUp className="w-4 h-4" />
+                        ) : (
+                          <ChevronDown className="w-4 h-4" />
+                        )}
                       </div>
                     </button>
 
                     {isExpanded && (
                       <div className="p-3 border-t border-zinc-800/80 space-y-2 bg-zinc-900/30">
-                        {day.meals.map((meal, mIdx) => (
-                          <div
-                            key={mIdx}
-                            onClick={() => setSelectedRecipeModal({ meal, dayIdx: dIdx, mealIdx: mIdx })}
-                            className="p-2 rounded-lg bg-zinc-950 border border-zinc-850 flex items-center justify-between text-xs cursor-pointer hover:border-zinc-750 transition-colors"
-                          >
-                            <div className="truncate pr-2">
-                              <span className="text-[10px] text-teal-400 block uppercase">
-                                {meal.mealType}
-                              </span>
-                              <span className="text-zinc-200 font-medium block truncate">
-                                {meal.name}
-                              </span>
-                            </div>
-                            <div className="flex items-center gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
-                              <span className="font-mono text-zinc-400">{Math.round(meal.calories * servingsScale)} kcal</span>
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleSwapMeal(dIdx, mIdx);
-                                }}
-                                className="px-2 py-1 rounded bg-zinc-900 text-zinc-400 hover:text-teal-300 flex items-center gap-1 text-[10px]"
-                                title="Swap meal"
+                        {day.meals.map((meal, mIdx) => {
+                          const isSwapping = swappingMealKey === `${dIdx}-${mIdx}`;
+
+                          if (meal.noMatchMessage) {
+                            return (
+                              <div
+                                key={mIdx}
+                                className="p-2.5 rounded-lg bg-zinc-950 border border-zinc-800 text-xs space-y-1"
                               >
-                                <RefreshCw className="w-3 h-3" />
-                                Swap
-                              </button>
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleLogPlanMeal(meal, mIdx, dIdx);
-                                }}
-                                disabled={loggedMealIds.has(`${dIdx}-${mIdx}-${meal.name}`)}
-                                className={`px-2 py-1 rounded text-[10px] font-semibold flex items-center gap-1 transition-colors ${
-                                  loggedMealIds.has(`${dIdx}-${mIdx}-${meal.name}`)
-                                    ? 'bg-zinc-850 text-teal-400 border border-teal-500/30'
-                                    : 'bg-teal-500 hover:bg-teal-400 text-zinc-950 font-bold'
-                                }`}
-                              >
-                                {loggedMealIds.has(`${dIdx}-${mIdx}-${meal.name}`) ? (
-                                  <>
-                                    <CheckCircle2 className="w-3 h-3" />
-                                    Logged
-                                  </>
-                                ) : (
-                                  <>
-                                    <Plus className="w-3 h-3" />
-                                    Log
-                                  </>
-                                )}
-                              </button>
+                                <span className="text-[10px] text-teal-400 capitalize block">
+                                  {meal.mealType}
+                                </span>
+                                <span className="text-zinc-300 font-medium block">{meal.name}</span>
+                                <span className="text-[11px] text-zinc-400 block">
+                                  {meal.noMatchMessage}
+                                </span>
+                              </div>
+                            );
+                          }
+
+                          return (
+                            <div
+                              key={mIdx}
+                              onClick={() =>
+                                setSelectedRecipeModal({ meal, dayIdx: dIdx, mealIdx: mIdx })
+                              }
+                              className="p-2.5 rounded-lg bg-zinc-950 border border-zinc-800/80 space-y-1.5 text-xs cursor-pointer hover:border-zinc-700 transition-colors"
+                            >
+                              <div className="flex items-center justify-between gap-2">
+                                <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                                  {meal.imageUrl && (
+                                    <img
+                                      src={meal.imageUrl}
+                                      alt={meal.name}
+                                      loading="lazy"
+                                      className="w-10 h-10 rounded-md object-cover shrink-0 border border-zinc-800"
+                                    />
+                                  )}
+                                  <div className="truncate pr-1">
+                                    <div className="flex items-center gap-1.5 text-[10px] text-zinc-400">
+                                      <span className="text-teal-400 font-semibold capitalize">
+                                        {meal.mealType}
+                                      </span>
+                                      {meal.category && (
+                                        <>
+                                          <span aria-hidden="true">·</span>
+                                          <span>{meal.category}</span>
+                                        </>
+                                      )}
+                                    </div>
+                                    <span className="text-zinc-100 font-medium block truncate">
+                                      {meal.name}
+                                    </span>
+                                  </div>
+                                </div>
+
+                                <div className="flex items-center gap-1.5 shrink-0">
+                                  <span className="font-mono tabular-nums text-zinc-400">
+                                    {Math.round(meal.calories * servingsScale)} kcal
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleSwapMeal(dIdx, mIdx);
+                                    }}
+                                    disabled={isSwapping}
+                                    className="px-2 py-1 rounded bg-zinc-900 text-zinc-400 hover:text-teal-300 flex items-center gap-1 text-[10px] disabled:opacity-50"
+                                    title="Swap with another TheMealDB recipe"
+                                  >
+                                    <RefreshCw
+                                      className={`w-3 h-3 ${isSwapping ? 'animate-spin' : ''}`}
+                                    />
+                                    Swap
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleLogPlanMeal(meal, mIdx, dIdx);
+                                    }}
+                                    disabled={loggedMealIds.has(`${dIdx}-${mIdx}-${meal.name}`)}
+                                    className={`px-2 py-1 rounded text-[10px] font-semibold flex items-center gap-1 transition-colors ${
+                                      loggedMealIds.has(`${dIdx}-${mIdx}-${meal.name}`)
+                                        ? 'bg-zinc-800 text-teal-400 border border-teal-500/30'
+                                        : 'bg-teal-500 hover:bg-teal-400 text-zinc-950 font-bold'
+                                    }`}
+                                  >
+                                    {loggedMealIds.has(`${dIdx}-${mIdx}-${meal.name}`) ? (
+                                      <>
+                                        <CheckCircle2 className="w-3 h-3" />
+                                        Logged
+                                      </>
+                                    ) : (
+                                      <>
+                                        <Plus className="w-3 h-3" />
+                                        Log
+                                      </>
+                                    )}
+                                  </button>
+                                </div>
+                              </div>
+
+                              {meal.calorieNote && (
+                                <p
+                                  className={`text-[11px] ${
+                                    meal.isSundayTreat ? 'text-amber-300' : 'text-zinc-400'
+                                  }`}
+                                >
+                                  {meal.calorieNote}
+                                </p>
+                              )}
                             </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     )}
                   </div>
@@ -1151,21 +1343,47 @@ export const PlanTab: React.FC = () => {
 
       {/* Recipe Detail Modal */}
       {selectedRecipeModal && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex flex-col justify-end sm:justify-center items-center overflow-hidden h-[100dvh]">
-          <div className="bg-zinc-900 border-t sm:border border-zinc-800 rounded-t-2xl sm:rounded-2xl max-w-lg w-full h-[90dvh] sm:h-auto sm:max-h-[90vh] flex flex-col shadow-2xl relative overflow-hidden animate-in fade-in duration-200">
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label={selectedRecipeModal.meal.name}
+          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex flex-col justify-end sm:justify-center items-center overflow-hidden h-[100dvh]"
+          onClick={() => setSelectedRecipeModal(null)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="bg-zinc-900 border-t sm:border border-zinc-800 rounded-t-2xl sm:rounded-2xl max-w-lg w-full h-[90dvh] sm:h-auto sm:max-h-[90vh] flex flex-col shadow-2xl relative overflow-hidden"
+          >
             {/* Modal Header */}
-            <div className="p-4 border-b border-zinc-800 flex items-center justify-between shrink-0">
-              <div className="flex items-center gap-2">
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-teal-500/20 text-teal-300 font-bold uppercase border border-teal-500/40">
-                  {selectedRecipeModal.meal.mealType}
-                </span>
-                <h3 className="text-sm font-bold text-zinc-100 truncate">
+            <div className="p-4 border-b border-zinc-800 flex items-start justify-between gap-3 shrink-0">
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-zinc-400">
+                  <span className="text-teal-400 font-semibold capitalize">
+                    {selectedRecipeModal.meal.mealType}
+                  </span>
+                  {selectedRecipeModal.meal.category && (
+                    <>
+                      <span aria-hidden="true">·</span>
+                      <span>{selectedRecipeModal.meal.category}</span>
+                    </>
+                  )}
+                  {selectedRecipeModal.meal.area && (
+                    <>
+                      <span aria-hidden="true">·</span>
+                      <span>{selectedRecipeModal.meal.area}</span>
+                    </>
+                  )}
+                  <span aria-hidden="true">·</span>
+                  <span>{selectedRecipeModal.meal.sourceAttribution || 'Recipe from TheMealDB'}</span>
+                </div>
+                <h3 className="text-base font-bold text-zinc-100 mt-0.5 leading-snug">
                   {selectedRecipeModal.meal.name}
                 </h3>
               </div>
               <button
+                type="button"
                 onClick={() => setSelectedRecipeModal(null)}
-                className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-100 transition-colors"
+                className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-100 transition-colors shrink-0"
                 aria-label="Close"
               >
                 <X className="w-4 h-4" />
@@ -1174,54 +1392,95 @@ export const PlanTab: React.FC = () => {
 
             {/* Modal Body (Scrollable) */}
             <div className="p-4 overflow-y-auto flex-1 space-y-4 pb-[100px]">
-              {/* Times & Servings */}
+              {/* Recipe Image (TheMealDB Thumbnail) */}
+              {selectedRecipeModal.meal.imageUrl && (
+                <div className="overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950">
+                  <img
+                    src={selectedRecipeModal.meal.imageUrl}
+                    alt={selectedRecipeModal.meal.name}
+                    className="w-full h-52 object-cover"
+                  />
+                </div>
+              )}
+
+              {/* Sunday Treat or Calorie Note */}
+              {selectedRecipeModal.meal.calorieNote && (
+                <div
+                  className={`p-3 rounded-xl border text-xs ${
+                    selectedRecipeModal.meal.isSundayTreat
+                      ? 'bg-amber-950/30 border-amber-500/30 text-amber-200'
+                      : 'bg-zinc-950 border-zinc-800 text-zinc-300'
+                  }`}
+                >
+                  {selectedRecipeModal.meal.calorieNote}
+                </div>
+              )}
+
+              {/* Prep / Cook Time & Servings */}
               <div className="grid grid-cols-3 gap-2 bg-zinc-950 p-3 rounded-xl border border-zinc-800 text-center font-mono text-xs">
                 <div>
-                  <span className="text-[10px] text-zinc-500 uppercase block">Prep Time</span>
-                  <span className="font-semibold text-zinc-200">{selectedRecipeModal.meal.prepTime || '10 min'}</span>
+                  <span className="text-[10px] text-zinc-500 block">Prep Time</span>
+                  <span className="font-semibold text-zinc-200">
+                    {selectedRecipeModal.meal.prepTime || 'Not specified'}
+                  </span>
                 </div>
                 <div>
-                  <span className="text-[10px] text-zinc-500 uppercase block">Cook Time</span>
-                  <span className="font-semibold text-zinc-200">{selectedRecipeModal.meal.cookTime || '15 min'}</span>
+                  <span className="text-[10px] text-zinc-500 block">Cook Time</span>
+                  <span className="font-semibold text-zinc-200">
+                    {selectedRecipeModal.meal.cookTime || 'Not specified'}
+                  </span>
                 </div>
                 <div>
-                  <span className="text-[10px] text-zinc-500 uppercase block">Servings</span>
-                  <span className="font-semibold text-teal-400">{servingsScale} serving{servingsScale > 1 ? 's' : ''}</span>
+                  <span className="text-[10px] text-zinc-500 block">Servings</span>
+                  <span className="font-semibold text-teal-400">
+                    {servingsScale} serving{servingsScale > 1 ? 's' : ''}
+                  </span>
                 </div>
               </div>
 
               {/* Macros & Calories */}
-              <div className="grid grid-cols-4 gap-2 bg-zinc-950 p-3 rounded-xl border border-zinc-800 text-center font-mono">
+              <div className="grid grid-cols-4 gap-2 bg-zinc-950 p-3 rounded-xl border border-zinc-800 text-center font-mono tabular-nums">
                 <div>
-                  <span className="text-[10px] text-zinc-500 uppercase block">Calories</span>
-                  <span className="text-xs font-bold text-teal-400">{Math.round(selectedRecipeModal.meal.calories * servingsScale)} kcal</span>
+                  <span className="text-[10px] text-zinc-500 block">Calories</span>
+                  <span className="text-xs font-bold text-teal-400">
+                    {Math.round(selectedRecipeModal.meal.calories * servingsScale)} kcal
+                  </span>
                 </div>
                 <div>
-                  <span className="text-[10px] text-teal-400 uppercase block">Protein</span>
-                  <span className="text-xs font-bold text-teal-300">{Math.round(selectedRecipeModal.meal.protein * servingsScale)}g</span>
+                  <span className="text-[10px] text-teal-400 block">Protein</span>
+                  <span className="text-xs font-bold text-teal-300">
+                    {Math.round(selectedRecipeModal.meal.protein * servingsScale)}g
+                  </span>
                 </div>
                 <div>
-                  <span className="text-[10px] text-blue-400 uppercase block">Carbs</span>
-                  <span className="text-xs font-bold text-blue-300">{Math.round(selectedRecipeModal.meal.carbs * servingsScale)}g</span>
+                  <span className="text-[10px] text-blue-400 block">Carbs</span>
+                  <span className="text-xs font-bold text-blue-300">
+                    {Math.round(selectedRecipeModal.meal.carbs * servingsScale)}g
+                  </span>
                 </div>
                 <div>
-                  <span className="text-[10px] text-amber-400 uppercase block">Fat</span>
-                  <span className="text-xs font-bold text-amber-300">{Math.round(selectedRecipeModal.meal.fat * servingsScale)}g</span>
+                  <span className="text-[10px] text-amber-400 block">Fat</span>
+                  <span className="text-xs font-bold text-amber-300">
+                    {Math.round(selectedRecipeModal.meal.fat * servingsScale)}g
+                  </span>
                 </div>
               </div>
 
-              {/* Ingredients List */}
+              {/* Full Ingredient List with Measurements */}
               <div className="space-y-2 bg-zinc-950 p-3.5 rounded-xl border border-zinc-800">
-                <h4 className="text-xs font-bold text-zinc-200 uppercase tracking-wider flex items-center gap-1.5">
+                <h4 className="text-xs font-semibold text-zinc-200 flex items-center gap-1.5">
                   <Utensils className="w-3.5 h-3.5 text-teal-400" />
-                  <span>Ingredients</span>
+                  <span>Ingredients &amp; Measurements</span>
                 </h4>
                 <ul className="space-y-1.5 text-xs text-zinc-300 font-mono">
-                  {selectedRecipeModal.meal.ingredients && selectedRecipeModal.meal.ingredients.length > 0 ? (
-                    selectedRecipeModal.meal.ingredients.map((ing, i) => (
-                      <li key={i} className="flex items-start gap-2 bg-zinc-900/60 p-2 rounded-lg border border-zinc-850">
-                        <span className="text-teal-400 font-bold">•</span>
-                        <span>{scaleIngredientText(ing, servingsScale)}</span>
+                  {modalIngredients.length > 0 ? (
+                    modalIngredients.map((ing, i) => (
+                      <li
+                        key={i}
+                        className="flex items-start gap-2 bg-zinc-900/60 p-2 rounded-lg border border-zinc-800/80"
+                      >
+                        <span className="text-teal-400 font-bold">·</span>
+                        <span>{ing}</span>
                       </li>
                     ))
                   ) : (
@@ -1230,31 +1489,41 @@ export const PlanTab: React.FC = () => {
                 </ul>
               </div>
 
-              {/* Step-by-Step Instructions */}
+              {/* Numbered Cooking Steps from TheMealDB */}
               <div className="space-y-2 bg-zinc-950 p-3.5 rounded-xl border border-zinc-800">
-                <h4 className="text-xs font-bold text-zinc-200 uppercase tracking-wider flex items-center gap-1.5">
+                <h4 className="text-xs font-semibold text-zinc-200 flex items-center gap-1.5">
                   <ChefHat className="w-3.5 h-3.5 text-teal-400" />
-                  <span>Step-by-Step Instructions</span>
+                  <span>Cooking Steps</span>
                 </h4>
-                <ol className="space-y-2.5 text-xs text-zinc-300">
-                  {(selectedRecipeModal.meal.instructions && selectedRecipeModal.meal.instructions.length > 0
-                    ? selectedRecipeModal.meal.instructions
-                    : [
-                        'Prepare and measure all ingredients according to the quantities listed.',
-                        'Heat a pan or pot over medium heat with a drizzle of olive oil or cooking spray.',
-                        'Combine and cook ingredients, stirring occasionally until tender and fully heated through.',
-                        'Season with salt, pepper, and your favorite herbs to taste.',
-                        'Plate, serve warm, and enjoy your meal!'
-                      ]
-                  ).map((step, sIdx) => (
-                    <li key={sIdx} className="flex items-start gap-2.5 bg-zinc-900/60 p-2.5 rounded-lg border border-zinc-850">
-                      <span className="shrink-0 w-5 h-5 rounded-full bg-teal-500/20 text-teal-300 font-mono font-bold text-[10px] flex items-center justify-center border border-teal-500/40">
-                        {sIdx + 1}
-                      </span>
-                      <span className="leading-relaxed">{step}</span>
-                    </li>
-                  ))}
-                </ol>
+                {modalSteps.length > 0 ? (
+                  <ol className="space-y-2.5 text-xs text-zinc-300">
+                    {modalSteps.map((step, sIdx) => (
+                      <li
+                        key={sIdx}
+                        className="flex items-start gap-2.5 bg-zinc-900/60 p-2.5 rounded-lg border border-zinc-800/80"
+                      >
+                        <span className="shrink-0 w-5 h-5 rounded-full bg-teal-500/20 text-teal-300 font-mono font-bold text-[10px] flex items-center justify-center border border-teal-500/40">
+                          {sIdx + 1}
+                        </span>
+                        <span className="leading-relaxed">{step}</span>
+                      </li>
+                    ))}
+                  </ol>
+                ) : (
+                  <p className="text-xs text-zinc-500">Not specified by TheMealDB.</p>
+                )}
+              </div>
+
+              {/* Source Attribution Footer */}
+              <div className="pt-1 flex items-center justify-between text-[11px] text-zinc-500">
+                <span>
+                  {selectedRecipeModal.meal.sourceAttribution || 'Recipe from TheMealDB'}
+                </span>
+                {(selectedRecipeModal.meal.mealDbId || selectedRecipeModal.meal.idMeal) && (
+                  <span className="font-mono">
+                    Meal ID #{selectedRecipeModal.meal.mealDbId || selectedRecipeModal.meal.idMeal}
+                  </span>
+                )}
               </div>
             </div>
 

@@ -27,6 +27,7 @@ import { parseIngredientLine, BUILTIN_FOODS } from '../server/foodData.js';
 import { decipherFoodText, decipherExerciseText } from '../utils/localAiEngine.js';
 import { formatLocalDate, addDaysLocal } from '../utils/dateUtils.js';
 import { getClientDeviceFingerprint } from '../utils/validation.js';
+import { generateWeekPlanFromMealDb, isLegacyNonMealDbPlan } from '../utils/mealDbPlanner.js';
 
 const TOKEN_KEY = 'forkcount_session_token';
 const GUEST_KEY = 'forkcount_guest_id';
@@ -2348,153 +2349,89 @@ class ApiService {
         .single();
       if (!error && data?.plan) {
         const plan = data.plan as WeekPlan;
-        this.localCache.plans[userId] = plan;
-        saveLocalCache(this.localCache);
-        return { plan };
+        if (!isLegacyNonMealDbPlan(plan)) {
+          this.localCache.plans[userId] = plan;
+          saveLocalCache(this.localCache);
+          return { plan };
+        }
       }
     } catch {}
-    return { plan: this.localCache.plans[userId] };
+
+    if (this.token && !this.token.startsWith('guest_')) {
+      try {
+        const resp = await fetch('/api/plan', {
+          headers: { Authorization: `Bearer ${this.token}` }
+        });
+        if (resp.ok) {
+          const srv = await resp.json();
+          if (srv?.plan && !isLegacyNonMealDbPlan(srv.plan)) {
+            this.localCache.plans[userId] = srv.plan;
+            saveLocalCache(this.localCache);
+            return { plan: srv.plan };
+          }
+        }
+      } catch {}
+    }
+
+    const cached = this.localCache.plans[userId];
+    if (cached && isLegacyNonMealDbPlan(cached)) {
+      delete this.localCache.plans[userId];
+      saveLocalCache(this.localCache);
+      return { plan: undefined };
+    }
+    return { plan: cached };
   }
 
   async generatePlan(payload: any): Promise<{ success: boolean; plan: WeekPlan }> {
+    const userId = this.token || 'guest';
+    const targetCalories = Number(
+      payload?.dailyTargetCalories ||
+      payload?.targetCalories ||
+      this.localCache.users?.[userId]?.profile?.targetCalories ||
+      2000
+    );
+
+    const normalizedPayload = {
+      ...payload,
+      dailyTargetCalories: targetCalories,
+      targetCalories
+    };
+
     try {
       const res = await fetch('/api/plan/generate', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          ...(this.token ? { 'Authorization': `Bearer ${this.token}` } : {})
+          ...(this.token ? { Authorization: `Bearer ${this.token}` } : {})
         },
-        body: JSON.stringify(payload)
+        body: JSON.stringify(normalizedPayload)
       });
       if (res.ok) {
-        const data = await res.json();
-        if (data.success && data.plan) {
-          const userId = this.token || 'guest';
-          this.localCache.plans[userId] = data.plan;
-          saveLocalCache(this.localCache);
-          return data;
+        const contentType = res.headers.get('content-type') || '';
+        if (contentType.includes('application/json')) {
+          const data = await res.json();
+          if (data.success && data.plan && !isLegacyNonMealDbPlan(data.plan)) {
+            await this.savePlan(data.plan);
+            return data;
+          }
         }
       }
-    } catch (err) {
-      console.warn('AI plan generation API failed, using fallback:', err);
+    } catch {
+      // Static deployment (e.g. GitHub Pages) or offline backend -> search TheMealDB directly client-side
     }
 
-    const targetCalories = Number(payload.targetCalories || 2000);
-    const proteinTarget = Math.round(targetCalories * 0.3 / 4);
-    const fatTarget = Math.round(targetCalories * 0.3 / 9);
-    const carbsTarget = Math.round((targetCalories - (proteinTarget * 4 + fatTarget * 9)) / 4);
+    const profileRestrictions =
+      this.localCache.users?.[userId]?.profile?.restrictions || [];
 
-    const restrictions = payload?.preferences?.restrictions || [];
-    const isVeg = restrictions.some((r: string) => r.toLowerCase().includes('vegetarian'));
-    const isVegan = restrictions.some((r: string) => r.toLowerCase().includes('vegan'));
-    const isPesc = restrictions.some((r: string) => r.toLowerCase().includes('pescatarian'));
-
-    let bName = 'Oatmeal & Protein Shake';
-    let bIng = ['Rolled Oats (80g)', 'Plant Protein Powder (30g)', 'Almond Milk (250ml)'];
-    let lName = isVegan ? 'Quinoa & Black Bean Buddha Bowl' : (isVeg ? 'Vegetarian Quinoa & Halloumi Salad' : (isPesc ? 'Grilled Salmon & Quinoa Bowl' : 'Grilled Chicken & Rice Bowl'));
-    let lIng = isVegan ? ['Quinoa (150g)', 'Black Beans (100g)', 'Avocado (50g)', 'Spinach (60g)'] : (isVeg ? ['Quinoa (150g)', 'Halloumi Cheese (100g)', 'Cucumber (80g)', 'Olive Oil (15ml)'] : (isPesc ? ['Atlantic Salmon (150g)', 'Quinoa (140g)', 'Asparagus (100g)'] : ['Chicken Breast (200g)', 'White Rice (150g)', 'Broccoli (100g)']));
-
-    const dayNames = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-    const days = dayNames.map((name, i) => {
-      const date = addDaysLocal(formatLocalDate(), i);
-      return {
-        dayIndex: i,
-        dayName: name,
-        date,
-        targetCalories,
-        actualCalories: 0,
-        meals: [
-          {
-            mealType: 'breakfast' as MealType,
-            name: bName,
-            calories: Math.round(targetCalories * 0.25),
-            protein: Math.round(proteinTarget * 0.3),
-            carbs: Math.round(carbsTarget * 0.3),
-            fat: Math.round(fatTarget * 0.2),
-            prepTime: '10 min',
-            cookTime: '5 min',
-            totalTime: '15 min',
-            aisle: 'pantry',
-            ingredients: bIng,
-            instructions: [
-              'Prepare and measure all ingredients according to quantities.',
-              'Combine ingredients in a bowl or pan, cooking or blending as needed.',
-              'Serve warm and enjoy your nutritious breakfast!'
-            ]
-          },
-          {
-            mealType: 'lunch' as MealType,
-            name: lName,
-            calories: Math.round(targetCalories * 0.35),
-            protein: Math.round(proteinTarget * 0.4),
-            carbs: Math.round(carbsTarget * 0.4),
-            fat: Math.round(fatTarget * 0.3),
-            prepTime: '15 min',
-            cookTime: '20 min',
-            totalTime: '35 min',
-            aisle: 'produce',
-            ingredients: lIng,
-            instructions: [
-              'Prep and chop all fresh ingredients.',
-              'Cook primary protein/grains over medium heat until tender.',
-              'Assemble in a bowl, season to taste, and serve.'
-            ]
-          },
-          {
-            mealType: 'dinner' as MealType,
-            name: isVegan ? 'Lentil & Sweet Potato Curry' : (isVeg ? 'Chickpea & Spinach Coconut Curry' : 'Baked Salmon with Sweet Potato & Veggies'),
-            calories: Math.round(targetCalories * 0.3),
-            protein: Math.round(proteinTarget * 0.25),
-            carbs: Math.round(carbsTarget * 0.25),
-            fat: Math.round(fatTarget * 0.4),
-            prepTime: '15 min',
-            cookTime: '25 min',
-            totalTime: '40 min',
-            aisle: 'produce',
-            ingredients: isVegan ? ['Red Lentils (100g)', 'Sweet Potato (150g)', 'Coconut Milk (100ml)', 'Spinach (50g)'] : (isVeg ? ['Chickpeas (150g)', 'Spinach (80g)', 'Coconut Milk (100ml)', 'Brown Rice (120g)'] : ['Atlantic Salmon (150g)', 'Sweet Potato (150g)', 'Broccoli (100g)']),
-            instructions: [
-              'Roast or simmer ingredients in a large pan until thoroughly cooked.',
-              'Season with herbs and spices of your choice.',
-              'Serve hot.'
-            ]
-          },
-          {
-            mealType: 'snack' as MealType,
-            name: isVegan ? 'Almond Butter & Apple Slices' : 'Greek Yogurt & Berries',
-            calories: Math.round(targetCalories * 0.1),
-            protein: Math.round(proteinTarget * 0.05),
-            carbs: Math.round(carbsTarget * 0.05),
-            fat: Math.round(fatTarget * 0.1),
-            prepTime: '5 min',
-            cookTime: '0 min',
-            totalTime: '5 min',
-            aisle: 'dairy',
-            ingredients: isVegan ? ['Apple (1 medium)', 'Almond Butter (30g)'] : ['Greek Yogurt 0% (150g)', 'Mixed Berries (80g)'],
-            instructions: [
-              'Portion ingredients into a bowl or plate.',
-              'Enjoy immediately.'
-            ]
-          }
-        ]
-      };
+    const plan = await generateWeekPlanFromMealDb(userId, {
+      type: payload?.type || 'both',
+      dailyTargetCalories: targetCalories,
+      dailyTargetCarbs: payload?.dailyTargetCarbs,
+      dailyTargetFat: payload?.dailyTargetFat,
+      dailyTargetProtein: payload?.dailyTargetProtein,
+      profileRestrictions,
+      preferences: payload?.preferences
     });
-
-    const plan: WeekPlan = {
-      weekStartDate: formatLocalDate(),
-      targetCalories,
-      macroTarget: {
-        calories: targetCalories,
-        proteinGrams: proteinTarget,
-        fatGrams: fatTarget,
-        carbsGrams: carbsTarget,
-        proteinPct: 30,
-        fatPct: 30,
-        carbsPct: 40
-      },
-      days: days as any,
-      weeklyStrategy: 'Balanced nutrition tailored to your dietary preferences and target calories.',
-      generatedAt: Date.now()
-    };
 
     await this.savePlan(plan);
     return { success: true, plan };
@@ -2504,6 +2441,16 @@ class ApiService {
     const userId = this.token || 'guest';
     this.localCache.plans[userId] = plan;
     saveLocalCache(this.localCache);
+    if (this.token && !this.token.startsWith('guest_')) {
+      fetch('/api/plan/save', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${this.token}`
+        },
+        body: JSON.stringify({ plan })
+      }).catch(() => {});
+    }
     try {
       await safeUpsert('plans', {
         id: userId,

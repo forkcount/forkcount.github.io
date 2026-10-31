@@ -1911,6 +1911,8 @@ export function sanitizeObjectStrings<T>(obj: T): T {
         k === 'newPassword'
       ) {
         out[k] = v;
+      } else if (k === 'rawInstructions' && typeof v === 'string') {
+        out[k] = sanitizeString(v, 16000);
       } else {
         out[k] = sanitizeObjectStrings(v);
       }

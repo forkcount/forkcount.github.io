@@ -209,7 +209,9 @@ app.use(
           "https://*.googleapis.com",
           "https://generativelanguage.googleapis.com",
           "https://api.nal.usda.gov",
-          "https://world.openfoodfacts.org"
+          "https://world.openfoodfacts.org",
+          "https://www.themealdb.com",
+          "https://themealdb.com"
         ],
         styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
         fontSrc: ["'self'", "data:", "https://fonts.gstatic.com"],

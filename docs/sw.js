@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'forkcount-shell-v2.2.2';
+const CACHE_VERSION = 'forkcount-shell-v2.3.0';
 const APP_SHELL_ASSETS = [
   './',
   './index.html',
@@ -53,6 +53,11 @@ self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
 
   const url = new URL(event.request.url);
+
+  // Never intercept cross-origin API/CDN requests (e.g. TheMealDB, Supabase, Google Fonts)
+  if (url.origin !== self.location.origin) {
+    return;
+  }
 
   // Never intercept or cache Vite dev server modules, node_modules pre-bundles, or HMR scripts
   if (

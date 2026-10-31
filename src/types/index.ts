@@ -269,6 +269,7 @@ export interface UserProfile {
   bmrFloorOverridden?: boolean;
   bmrFloorOverriddenAt?: number;
   hasMetabolicCondition?: boolean;
+  restrictions?: string[];
 }
 
 export interface MacroTarget {
@@ -306,11 +307,28 @@ export interface UserStats {
   averageDailyCalories?: number;
 }
 
+export interface MealDbIngredientItem {
+  ingredient: string;
+  measure: string;
+}
+
 export interface PlanDayMeal {
   mealType: MealType;
+  mealDbId?: string;
+  idMeal?: string;
   name: string;
+  category?: string;
+  area?: string;
+  imageUrl?: string;
+  ingredientItems?: MealDbIngredientItem[];
   ingredients: string[];
+  rawInstructions?: string;
   instructions?: string[];
+  sourceAttribution?: string;
+  targetSlotCalories?: number;
+  calorieNote?: string;
+  isSundayTreat?: boolean;
+  noMatchMessage?: string;
   calories: number;
   protein: number;
   carbs: number;

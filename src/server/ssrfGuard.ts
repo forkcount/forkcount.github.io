@@ -8,6 +8,8 @@ const ALLOWED_DOMAINS = new Set([
   'generativelanguage.googleapis.com',
   'world.openfoodfacts.org',
   'openfoodfacts.org',
+  'www.themealdb.com',
+  'themealdb.com',
   'fonts.googleapis.com',
   'fonts.gstatic.com'
 ]);
