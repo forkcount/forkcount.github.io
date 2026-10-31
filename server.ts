@@ -155,7 +155,7 @@ import {
 import { validateUsername, validatePasswordRules, getPasswordStrength } from './src/utils/validation.js';
 import { formatLocalDate, addDaysLocal } from './src/utils/dateUtils.js';
 import { parseIngredientLine } from './src/server/foodData.js';
-import { searchUsdaFoods } from './src/server/usda.js';
+import { searchUsdaFoods, searchUsdaFdcPer100g } from './src/server/usda.js';
 import { generateWeekPlanWithGemini } from './src/server/aiPlanner.js';
 import {
   parseVoiceMealWithGemini,
@@ -2991,6 +2991,21 @@ app.post('/api/usda/search', authenticateUser, async (req, res) => {
   }
 
   const result = await searchUsdaFoods(query, storeFilter);
+  res.json(result);
+});
+
+app.post('/api/usda/fdc-search', async (req, res) => {
+  const ip = getClientIp(req);
+  if (!checkRateLimit(`usda_ip:${ip}`, 40, 60_000)) {
+    res.status(200).json({ error: 'rate_limit' });
+    return;
+  }
+  const query = typeof req.body?.query === 'string' ? req.body.query.trim() : '';
+  if (!query) {
+    res.json({ foods: [] });
+    return;
+  }
+  const result = await searchUsdaFdcPer100g(query);
   res.json(result);
 });
 

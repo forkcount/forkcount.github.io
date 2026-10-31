@@ -1,8 +1,9 @@
 {
-  "name": "ForkCount — Calorie & Macro Tracker",
+  "id": "/",
+  "name": "ForkCount",
   "short_name": "ForkCount",
   "description": "Free calorie, macro, water, and exercise tracking calculated from your own body.",
-  "start_url": "/dashboard",
+  "start_url": "/",
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait",

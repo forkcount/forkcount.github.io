@@ -110,6 +110,30 @@
       </div>
     </div>
     <script>
+      window.__deferredPwaPrompt = window.__deferredPwaPrompt || null;
+      window.addEventListener('beforeinstallprompt', function (e) {
+        e.preventDefault();
+        window.__deferredPwaPrompt = e;
+        window.dispatchEvent(new CustomEvent('forkcount-pwa-prompt-ready', { detail: e }));
+      });
+      if ('serviceWorker' in navigator && window.location.protocol.indexOf('http') === 0) {
+        window.addEventListener('load', function () {
+          navigator.serviceWorker
+            .register('/sw.js')
+            .then(function (reg) {
+              reg.addEventListener('updatefound', function () {
+                var newWorker = reg.installing;
+                if (!newWorker) return;
+                newWorker.addEventListener('statechange', function () {
+                  if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                    window.dispatchEvent(new CustomEvent('forkcount-sw-update'));
+                  }
+                });
+              });
+            })
+            .catch(function () {});
+        });
+      }
       setTimeout(function () {
         var el = document.getElementById('forkcount-slow-load-msg');
         if (el) el.style.opacity = '1';

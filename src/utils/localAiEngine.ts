@@ -2154,6 +2154,92 @@ function findBestFoodMatch(foodPhrase: string): LocalFoodEntry | null {
   return null;
 }
 
+export function extractUsdaCandidateQuery(rawInput: string): {
+  shouldSearchUsda: boolean;
+  cleanQuery: string;
+} {
+  const trimmed = String(rawInput || '').trim();
+  if (!trimmed || trimmed.length < 2) {
+    return { shouldSearchUsda: false, cleanQuery: '' };
+  }
+
+  // Skip barcodes and multi-line / colon recipes
+  if (/^(?:upc|ean|barcode)?\s*[:#]?\s*\d{6,14}$/i.test(trimmed)) {
+    return { shouldSearchUsda: false, cleanQuery: '' };
+  }
+  if (trimmed.includes('\n') || trimmed.includes(':')) {
+    return { shouldSearchUsda: false, cleanQuery: '' };
+  }
+
+  const normalized = normalizeFoodTypos(trimmed);
+  const sanitized = normalized.replace(/,\s*(?=\d+\s*%)/g, ' ');
+  const parts = sanitized
+    .split(/(?:[,;\n+]+|\b(?:and|with|plus|topped with|alongside)\b)/i)
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  if (parts.length > 1) {
+    const allMatched = parts.every((part) => findBestFoodMatch(part) !== null);
+    if (allMatched) {
+      return { shouldSearchUsda: false, cleanQuery: '' };
+    }
+  }
+
+  // Strip leading/trailing quantities, numbers, and units to isolate the food name
+  const cleanedPhrase = trimmed
+    .replace(
+      /^(?:(a|an|one|two|three|four|five|six|seven|eight|nine|ten|twelve|half|quarter|\d+(?:[.,/]\d+)?)\s*)?(?:(g|grams?|kg|kilograms?|ml|milliliters?|l|liters?|oz|ounces?|lbs?|pounds?|cups?|mug|mugs|glass|glasses|pint|pints|shot|shots|can|cans|bottle|bottles|tbsp|tablespoons?|tsp|teaspoons?|slices?|pieces?|servings?)\b\s*(?:of\s+)?)?/i,
+      ''
+    )
+    .replace(
+      /[,\s\-–(]+(?:\d+(?:[.,]\d+)?)\s*(?:g|grams?|kg|kilograms?|ml|milliliters?|l|liters?|oz|ounces?|lbs?|pounds?|cups?|tbsp|tsp)\)?$/i,
+      ''
+    )
+    .replace(/^(?:a|an|the|some|of)\s+/i, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (!cleanedPhrase || cleanedPhrase.length < 2 || /^\d+$/.test(cleanedPhrase)) {
+    return { shouldSearchUsda: false, cleanQuery: '' };
+  }
+
+  const lookupLower = normalizeFoodTypos(cleanedPhrase)
+    .toLowerCase()
+    .replace(/\b(of|fresh|raw|organic|cooked|chopped|diced|sliced|some|a|an|the)\b/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (!lookupLower) {
+    return { shouldSearchUsda: false, cleanQuery: '' };
+  }
+
+  const singular = lookupLower.endsWith('ies')
+    ? `${lookupLower.slice(0, -3)}y`
+    : lookupLower.endsWith('es')
+    ? lookupLower.slice(0, -2)
+    : lookupLower.endsWith('s') && !lookupLower.endsWith('ss')
+    ? lookupLower.slice(0, -1)
+    : lookupLower;
+  const plural = `${singular}s`;
+
+  const isExactBuiltin = LOCAL_FOOD_DB.some((entry) => {
+    const entryName = entry.name.toLowerCase();
+    if (entryName === lookupLower || entryName === singular || entryName === plural) {
+      return true;
+    }
+    return entry.keywords.some((kw) => {
+      const k = kw.toLowerCase();
+      return k === lookupLower || k === singular || k === plural;
+    });
+  });
+
+  if (isExactBuiltin) {
+    return { shouldSearchUsda: false, cleanQuery: cleanedPhrase };
+  }
+
+  return { shouldSearchUsda: true, cleanQuery: cleanedPhrase };
+}
+
 export function getCupWeightGrams(foodPhrase: string): number {
   const lower = foodPhrase.toLowerCase();
   if (/\b(?:flour|all[- ]?purpose flour|wheat flour|plain flour|baking flour|cake flour)\b/i.test(lower)) return 120;

@@ -4,6 +4,7 @@ import { Sparkles, Mic, X } from 'lucide-react';
 interface SmartAiFoodInputProps {
   value: string;
   onChange: (val: string) => void;
+  onRawChange?: (val: string) => void;
   onSubmit: (val: string) => void;
   onClear: () => void;
   isListening: boolean;
@@ -15,6 +16,7 @@ interface SmartAiFoodInputProps {
 export const SmartAiFoodInput: React.FC<SmartAiFoodInputProps> = ({
   value: externalValue,
   onChange,
+  onRawChange,
   onSubmit,
   onClear,
   isListening,
@@ -39,11 +41,18 @@ export const SmartAiFoodInput: React.FC<SmartAiFoodInputProps> = ({
   }, [localText, onChange]);
 
   const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setLocalText(e.target.value);
+    const nextVal = e.target.value;
+    setLocalText(nextVal);
+    if (onRawChange) {
+      onRawChange(nextVal);
+    }
   };
 
   const handleClear = () => {
     setLocalText('');
+    if (onRawChange) {
+      onRawChange('');
+    }
     onClear();
   };
 

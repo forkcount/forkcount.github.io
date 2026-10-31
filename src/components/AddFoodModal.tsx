@@ -21,11 +21,13 @@ import {
 } from 'lucide-react';
 import { useApp } from '../context/AppContext.js';
 import { api } from '../services/api.js';
+import { supabase } from '../services/supabase.js';
 import { BarcodeScannerModal } from './BarcodeScannerModal.js';
 import { lookupBarcodeProduct, BarcodeProduct } from '../services/barcodeService.js';
 import {
   decipherFoodText,
   recalculateDecipheredFoodWithGrams,
+  extractUsdaCandidateQuery,
   DecipheredFoodResult,
   DecipheredFoodItem
 } from '../utils/localAiEngine.js';
@@ -53,6 +55,14 @@ interface ScannedMenuDish {
   scoreReason: string;
 }
 
+interface UsdaSearchFoodCard {
+  name: string;
+  kcal: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+}
+
 export const AddFoodModal: React.FC<AddFoodModalProps> = ({ isOpen, onClose, defaultMeal }) => {
   const {
     activeDate,
@@ -69,6 +79,7 @@ export const AddFoodModal: React.FC<AddFoodModalProps> = ({ isOpen, onClose, def
 
   const [mealType, setMealType] = useState<MealType>(defaultMeal || lastSelectedMeal || 'breakfast');
   const [inputText, setInputText] = useState('');
+  const [rawTypedText, setRawTypedText] = useState('');
   const [parsedResult, setParsedResult] = useState<DecipheredFoodResult | null>(null);
   const [gramOverrides, setGramOverrides] = useState<Record<number, number>>({});
   const [editingWeightIndex, setEditingWeightIndex] = useState<number | null>(null);
@@ -79,6 +90,15 @@ export const AddFoodModal: React.FC<AddFoodModalProps> = ({ isOpen, onClose, def
   const [recipeServingsOverride, setRecipeServingsOverride] = useState<number | null>(null);
   const [saveSuccessMsg, setSaveSuccessMsg] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
+
+  // USDA FoodData Central Search State
+  const [isSearchingUsda, setIsSearchingUsda] = useState(false);
+  const [usdaFoods, setUsdaFoods] = useState<UsdaSearchFoodCard[]>([]);
+  const [usdaCompletedQuery, setUsdaCompletedQuery] = useState<string | null>(null);
+  const [usdaRateLimited, setUsdaRateLimited] = useState(false);
+  const [hasSelectedUsdaItem, setHasSelectedUsdaItem] = useState(false);
+  const hasSelectedUsdaItemRef = useRef(false);
+  const usdaSearchSeqRef = useRef(0);
 
   // Speech Recognition State
   const [isListening, setIsListening] = useState(false);
@@ -142,6 +162,7 @@ export const AddFoodModal: React.FC<AddFoodModalProps> = ({ isOpen, onClose, def
     if (isOpen) {
       setMealType(defaultMeal || lastSelectedMeal || 'breakfast');
       setInputText('');
+      setRawTypedText('');
       setParsedResult(null);
       setGramOverrides({});
       setEditingWeightIndex(null);
@@ -152,6 +173,12 @@ export const AddFoodModal: React.FC<AddFoodModalProps> = ({ isOpen, onClose, def
       setMenuPhotos([]);
       setScannedDishes([]);
       setAddedDishIds({});
+      setIsSearchingUsda(false);
+      setUsdaFoods([]);
+      setUsdaCompletedQuery(null);
+      setUsdaRateLimited(false);
+      setHasSelectedUsdaItem(false);
+      hasSelectedUsdaItemRef.current = false;
     }
   }, [isOpen, defaultMeal, lastSelectedMeal]);
 
@@ -182,7 +209,13 @@ export const AddFoodModal: React.FC<AddFoodModalProps> = ({ isOpen, onClose, def
       recognition.onresult = (event: any) => {
         const transcript = event.results[0][0].transcript;
         if (transcript) {
-          setInputText((prev) => (prev.trim() ? `${prev.trim()} ${transcript}` : transcript));
+          setInputText((prev) => {
+            const next = prev.trim() ? `${prev.trim()} ${transcript}` : transcript;
+            setRawTypedText(next);
+            hasSelectedUsdaItemRef.current = false;
+            setHasSelectedUsdaItem(false);
+            return next;
+          });
         }
       };
 
@@ -311,8 +344,170 @@ export const AddFoodModal: React.FC<AddFoodModalProps> = ({ isOpen, onClose, def
     }
   }, [isOpen]);
 
-  // Real-time input parsing: automatically deciphers foods and recipes as user types or pastes
+  const usdaCandidate = useMemo(() => extractUsdaCandidateQuery(rawTypedText), [rawTypedText]);
+
+  // 800ms debounced USDA FoodData Central search when typed food is NOT in the built-in list
   useEffect(() => {
+    if (!isOpen) return;
+
+    if (!usdaCandidate.shouldSearchUsda || !usdaCandidate.cleanQuery) {
+      setIsSearchingUsda(false);
+      setUsdaFoods([]);
+      setUsdaCompletedQuery(null);
+      setUsdaRateLimited(false);
+      return;
+    }
+
+    const queryToSearch = usdaCandidate.cleanQuery;
+    const seq = ++usdaSearchSeqRef.current;
+
+    const timer = setTimeout(async () => {
+      setIsSearchingUsda(true);
+      setUsdaRateLimited(false);
+
+      try {
+        let payload: any = null;
+        const { data, error } = await supabase.functions.invoke('search-usda', {
+          body: { query: queryToSearch }
+        });
+
+        if (!error && data) {
+          payload = data;
+        } else {
+          // Server-side fallback proxy if the Edge Function has not been deployed yet (never uses client-side keys)
+          const fallbackRes = await fetch('/api/usda/fdc-search', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ query: queryToSearch })
+          });
+          if (fallbackRes.ok) {
+            payload = await fallbackRes.json();
+          }
+        }
+
+        if (seq !== usdaSearchSeqRef.current) return;
+
+        if (payload?.error === 'rate_limit') {
+          setUsdaRateLimited(true);
+          setUsdaFoods([]);
+          setUsdaCompletedQuery(queryToSearch);
+        } else {
+          const list = Array.isArray(payload?.foods) ? payload.foods : [];
+          setUsdaFoods(
+            list.map((f: any) => ({
+              name: String(f?.name || 'Food'),
+              kcal: Math.round(Number(f?.kcal) || 0),
+              protein: Math.round((Number(f?.protein) || 0) * 10) / 10,
+              carbs: Math.round((Number(f?.carbs) || 0) * 10) / 10,
+              fat: Math.round((Number(f?.fat) || 0) * 10) / 10
+            }))
+          );
+          setUsdaCompletedQuery(queryToSearch);
+        }
+      } catch {
+        if (seq !== usdaSearchSeqRef.current) return;
+        setUsdaFoods([]);
+        setUsdaCompletedQuery(queryToSearch);
+      } finally {
+        if (seq === usdaSearchSeqRef.current) {
+          setIsSearchingUsda(false);
+        }
+      }
+    }, 800);
+
+    return () => clearTimeout(timer);
+  }, [isOpen, usdaCandidate.shouldSearchUsda, usdaCandidate.cleanQuery]);
+
+  // Tap handler for USDA FoodData Central cards: adds item to meal with editable gram input (default 100g)
+  const handleSelectUsdaCard = (food: UsdaSearchFoodCard) => {
+    const newItem: DecipheredFoodItem = {
+      rawText: food.name,
+      name: food.name,
+      grams: 100,
+      isEstimatedWeight: false,
+      needsWeightConfirmation: false,
+      servingLabel: '100g',
+      calories: Math.round(food.kcal),
+      protein: Math.round(food.protein * 10) / 10,
+      carbs: Math.round(food.carbs * 10) / 10,
+      fat: Math.round(food.fat * 10) / 10,
+      fiber: 0,
+      sugar: 0,
+      sodiumMg: 0,
+      caffeineMg: 0,
+      standardDrinks: 0,
+      caloriesPer100g: food.kcal,
+      proteinPer100g: food.protein,
+      carbsPer100g: food.carbs,
+      fatPer100g: food.fat,
+      fiberPer100g: 0,
+      sugarPer100g: 0,
+      sodiumMgPer100g: 0,
+      category: 'processed'
+    };
+
+    const existingItems =
+      hasSelectedUsdaItemRef.current && parsedResult && !parsedResult.isRecipe
+        ? parsedResult.items
+        : [];
+    const combinedItems = [...existingItems, newItem];
+    const nextOverrides: Record<number, number> = {};
+    combinedItems.forEach((it, idx) => {
+      nextOverrides[idx] = idx < existingItems.length ? (gramOverrides[idx] ?? it.grams) : 100;
+    });
+
+    const baseSummary: DecipheredFoodResult = {
+      mealSummaryName:
+        combinedItems.length === 1
+          ? newItem.name
+          : `${combinedItems[0].name} + ${combinedItems.length - 1} more`,
+      items: combinedItems,
+      needsWeightConfirmation: false,
+      hasItemOver5kg: false,
+      isOver5000Kcal: false,
+      isExtremeCalorieMeal: false,
+      usedFallbackReference: false,
+      referenceDailyGoal: macroTarget?.calories || 2000,
+      totalCalories: combinedItems.reduce((s, i) => s + i.calories, 0),
+      totalProtein: Math.round(combinedItems.reduce((s, i) => s + i.protein, 0) * 10) / 10,
+      totalCarbs: Math.round(combinedItems.reduce((s, i) => s + i.carbs, 0) * 10) / 10,
+      totalFat: Math.round(combinedItems.reduce((s, i) => s + i.fat, 0) * 10) / 10,
+      totalFiber: 0,
+      totalSugar: 0,
+      totalSodiumMg: 0,
+      totalCaffeineMg: 0,
+      totalStandardDrinks: 0,
+      healthRating: 8,
+      healthLabel: 'Nutrition data from USDA FoodData Central (per 100g).',
+      whatToAdd: [],
+      whatToTakeOut: [],
+      isRecipe: false
+    };
+
+    const recalculated = recalculateDecipheredFoodWithGrams(
+      baseSummary,
+      nextOverrides,
+      macroTarget?.calories || 2000,
+      mealType
+    );
+
+    hasSelectedUsdaItemRef.current = true;
+    setHasSelectedUsdaItem(true);
+    if (!inputText.trim() && rawTypedText.trim()) {
+      setInputText(rawTypedText);
+    }
+    setParsedResult(recalculated);
+    setGramOverrides(nextOverrides);
+    setEditingWeightIndex(combinedItems.length - 1);
+    setFormError(null);
+  };
+
+  // Real-time input parsing: automatically deciphers built-in foods and recipes as user types or pastes
+  useEffect(() => {
+    if (hasSelectedUsdaItemRef.current) {
+      return;
+    }
+
     const trimmed = inputText.trim();
     if (!trimmed) {
       setParsedResult(null);
@@ -386,7 +581,17 @@ export const AddFoodModal: React.FC<AddFoodModalProps> = ({ isOpen, onClose, def
       return () => clearTimeout(timer);
     }
 
+    // If the typed food is NOT in the built-in list, let USDA search handle it instead of guessing
+    const checkUsda = extractUsdaCandidateQuery(trimmed);
+    if (checkUsda.shouldSearchUsda) {
+      setParsedResult(null);
+      setGramOverrides({});
+      setFormError(null);
+      return;
+    }
+
     const timer = setTimeout(() => {
+      if (hasSelectedUsdaItemRef.current) return;
       const parsed = decipherFoodText(trimmed, macroTarget?.calories || 2000, mealType);
       setParsedResult(parsed);
       setGramOverrides({});
@@ -411,7 +616,7 @@ export const AddFoodModal: React.FC<AddFoodModalProps> = ({ isOpen, onClose, def
   // Check if user has entered food with parsed items (used to gate result card display)
   const hasParsedItems = useMemo(() => {
     return Boolean(
-      inputText.trim() &&
+      (inputText.trim() || rawTypedText.trim() || hasSelectedUsdaItem) &&
       activeResult &&
       activeResult.items &&
       activeResult.items.length > 0 &&
@@ -419,7 +624,7 @@ export const AddFoodModal: React.FC<AddFoodModalProps> = ({ isOpen, onClose, def
         (it) => it.name && it.name.trim().length > 0 && (it.calories > 0 || it.grams > 0 || it.protein > 0 || it.carbs > 0 || it.fat > 0)
       )
     );
-  }, [inputText, activeResult]);
+  }, [inputText, rawTypedText, hasSelectedUsdaItem, activeResult]);
 
   // Unified Log action: reads parsed item(s), saves to database diary, resets form, and navigates back to Diary
   const handleLogAndSave = async (eOrExplicitText?: React.FormEvent | string) => {
@@ -959,6 +1164,16 @@ export const AddFoodModal: React.FC<AddFoodModalProps> = ({ isOpen, onClose, def
               <div className="space-y-2.5">
                 <SmartAiFoodInput
                   value={inputText}
+                  onRawChange={(val) => {
+                    setRawTypedText(val);
+                    hasSelectedUsdaItemRef.current = false;
+                    setHasSelectedUsdaItem(false);
+                    if (!val.trim()) {
+                      setParsedResult(null);
+                      setGramOverrides({});
+                    }
+                    if (formError) setFormError(null);
+                  }}
                   onChange={(val) => {
                     setInputText(val);
                     if (formError) setFormError(null);
@@ -966,9 +1181,16 @@ export const AddFoodModal: React.FC<AddFoodModalProps> = ({ isOpen, onClose, def
                   onSubmit={(val) => handleLogAndSave(val)}
                   onClear={() => {
                     setInputText('');
+                    setRawTypedText('');
                     setParsedResult(null);
                     setFormError(null);
                     setGramOverrides({});
+                    setIsSearchingUsda(false);
+                    setUsdaFoods([]);
+                    setUsdaCompletedQuery(null);
+                    setUsdaRateLimited(false);
+                    hasSelectedUsdaItemRef.current = false;
+                    setHasSelectedUsdaItem(false);
                   }}
                   isListening={isListening}
                   speechSupported={speechSupported}
@@ -979,6 +1201,62 @@ export const AddFoodModal: React.FC<AddFoodModalProps> = ({ isOpen, onClose, def
                   <div className="p-3 bg-rose-500/10 border border-rose-500/30 rounded-xl text-xs text-rose-300 flex items-center gap-2">
                     <AlertTriangle className="w-4 h-4 shrink-0" />
                     <span>{formError}</span>
+                  </div>
+                )}
+
+                {/* USDA FoodData Central Search Results (when food is not in built-in list) */}
+                {usdaCandidate.shouldSearchUsda && (
+                  <div className="space-y-2">
+                    {isSearchingUsda ? (
+                      <div
+                        role="status"
+                        aria-live="polite"
+                        className="p-3.5 bg-zinc-950 border border-teal-500/30 rounded-2xl flex items-center justify-center gap-2 text-xs font-semibold text-teal-300"
+                      >
+                        <Loader2 className="w-4 h-4 animate-spin text-teal-400 shrink-0" />
+                        <span>Searching USDA...</span>
+                      </div>
+                    ) : usdaRateLimited ? (
+                      <div className="p-3.5 bg-zinc-950 border border-amber-500/30 rounded-2xl text-xs text-amber-300 text-center">
+                        USDA rate limit reached. Please wait a moment and try again.
+                      </div>
+                    ) : usdaFoods.length > 0 ? (
+                      <div className="bg-zinc-950 border border-zinc-800 rounded-2xl p-3 space-y-2">
+                        <div className="flex items-center justify-between px-0.5">
+                          <span className="text-[11px] font-bold uppercase tracking-wider text-teal-400">
+                            USDA Results (per 100g)
+                          </span>
+                          <span className="text-[10px] text-zinc-400">Tap a food to add</span>
+                        </div>
+                        <div className="space-y-1.5 max-h-56 overflow-y-auto pr-0.5">
+                          {usdaFoods.map((food, idx) => (
+                            <button
+                              key={`${food.name}-${idx}`}
+                              type="button"
+                              onClick={() => handleSelectUsdaCard(food)}
+                              className="w-full text-left p-2.5 rounded-xl bg-zinc-900/90 hover:bg-zinc-800 border border-zinc-800 hover:border-teal-500/50 transition-colors flex items-center justify-between gap-2.5 group"
+                            >
+                              <div className="min-w-0 flex-1">
+                                <span className="text-xs font-semibold text-zinc-100 block truncate group-hover:text-teal-300 transition-colors">
+                                  {food.name}
+                                </span>
+                                <span className="text-[11px] font-mono text-zinc-400 block mt-0.5">
+                                  {food.kcal} kcal · {food.protein}g P · {food.carbs}g C · {food.fat}g F
+                                </span>
+                              </div>
+                              <span className="px-2 py-1 rounded-lg bg-teal-500/15 text-teal-300 border border-teal-500/30 text-[11px] font-semibold inline-flex items-center gap-1 shrink-0">
+                                <Plus className="w-3 h-3" />
+                                <span>100g</span>
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    ) : usdaCompletedQuery === usdaCandidate.cleanQuery ? (
+                      <div className="p-3.5 bg-zinc-950 border border-zinc-800 rounded-2xl text-xs text-zinc-400 text-center">
+                        No results in USDA. Try a different name.
+                      </div>
+                    ) : null}
                   </div>
                 )}
 
@@ -1091,14 +1369,15 @@ export const AddFoodModal: React.FC<AddFoodModalProps> = ({ isOpen, onClose, def
                               </div>
 
                               <div className="flex items-center gap-1.5 shrink-0">
-                                {isEditing ? (
+                                {hasSelectedUsdaItem || isEditing ? (
                                   <div className="flex items-center gap-1">
                                     <input
                                       type="number"
                                       min="0"
                                       step="any"
+                                      aria-label={`Grams for ${item.name}`}
                                       value={currentGrams === 0 && !hasOverride ? '' : currentGrams}
-                                      placeholder="grams"
+                                      placeholder="100"
                                       onChange={(e) => {
                                         const raw = e.target.value;
                                         const num = raw === '' ? 0 : Math.max(0, parseFloat(raw) || 0);
@@ -1107,10 +1386,16 @@ export const AddFoodModal: React.FC<AddFoodModalProps> = ({ isOpen, onClose, def
                                       onKeyDown={(e) => {
                                         if (e.key === 'Enter') {
                                           e.preventDefault();
+                                          if (!hasSelectedUsdaItem) {
+                                            setEditingWeightIndex(null);
+                                          }
+                                        }
+                                      }}
+                                      onBlur={() => {
+                                        if (!hasSelectedUsdaItem) {
                                           setEditingWeightIndex(null);
                                         }
                                       }}
-                                      onBlur={() => setEditingWeightIndex(null)}
                                       className="w-16 bg-zinc-950 border border-teal-500 rounded px-1.5 py-0.5 text-right font-mono text-xs text-zinc-100 focus:outline-none"
                                     />
                                     <span className="text-[11px] font-mono text-zinc-400">g</span>

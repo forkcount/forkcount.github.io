@@ -80,12 +80,12 @@
         }
       }
     </script>
-    <script type="module" crossorigin src="/assets/index-C6CBVttR.js"></script>
+    <script type="module" crossorigin src="/assets/index-CsJWWByX.js"></script>
     <link rel="modulepreload" crossorigin href="/assets/rolldown-runtime-Dik6OG8R.js">
     <link rel="modulepreload" crossorigin href="/assets/vendor-CfNMEbM2.js">
-    <link rel="modulepreload" crossorigin href="/assets/ai-engine-DjutdHLF.js">
+    <link rel="modulepreload" crossorigin href="/assets/ai-engine-Bw9sz5I3.js">
     <link rel="modulepreload" crossorigin href="/assets/vendor-icons-B83m9V-f.js">
-    <link rel="stylesheet" crossorigin href="/assets/index-COy36OD4.css">
+    <link rel="stylesheet" crossorigin href="/assets/index-Mw3NEeXc.css">
   </head>
   <body class="bg-zinc-950 text-zinc-100 antialiased">
     <div id="root">
@@ -116,6 +116,30 @@
       </div>
     </div>
     <script>
+      window.__deferredPwaPrompt = window.__deferredPwaPrompt || null;
+      window.addEventListener('beforeinstallprompt', function (e) {
+        e.preventDefault();
+        window.__deferredPwaPrompt = e;
+        window.dispatchEvent(new CustomEvent('forkcount-pwa-prompt-ready', { detail: e }));
+      });
+      if ('serviceWorker' in navigator && window.location.protocol.indexOf('http') === 0) {
+        window.addEventListener('load', function () {
+          navigator.serviceWorker
+            .register('/sw.js')
+            .then(function (reg) {
+              reg.addEventListener('updatefound', function () {
+                var newWorker = reg.installing;
+                if (!newWorker) return;
+                newWorker.addEventListener('statechange', function () {
+                  if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                    window.dispatchEvent(new CustomEvent('forkcount-sw-update'));
+                  }
+                });
+              });
+            })
+            .catch(function () {});
+        });
+      }
       setTimeout(function () {
         var el = document.getElementById('forkcount-slow-load-msg');
         if (el) el.style.opacity = '1';

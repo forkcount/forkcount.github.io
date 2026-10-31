@@ -46,6 +46,25 @@ const RouteSkeleton: React.FC = () => (
   </div>
 );
 
+let visitCountForCurrentLoad: number | null = null;
+function incrementVisitCountOncePerLoad(): number {
+  if (visitCountForCurrentLoad !== null) {
+    return visitCountForCurrentLoad;
+  }
+  try {
+    const raw = localStorage.getItem('forkcount_visit_count');
+    const prev = raw !== null ? parseInt(raw, 10) : 0;
+    const safePrev = Number.isFinite(prev) && prev >= 0 ? prev : 0;
+    const next = safePrev + 1;
+    localStorage.setItem('forkcount_visit_count', String(next));
+    visitCountForCurrentLoad = next;
+    return next;
+  } catch {
+    visitCountForCurrentLoad = 1;
+    return 1;
+  }
+}
+
 interface MainAppContentProps {
   onOpenDescription: () => void;
   onOpenPrivacy: () => void;
@@ -497,10 +516,11 @@ export default function App() {
     return !localStorage.getItem('forkcount_cookie_consent_at') && !localStorage.getItem('caloriq_cookie_consent_at');
   });
 
-  // #20, #21, #22 Custom PWA install prompt (after 2nd visit, hidden if installed or dismissed)
-  const [deferredPwaPrompt, setDeferredPwaPrompt] = useState<any>(null);
+  // PWA install prompt (shown on every even visit: 2, 4, 6...)
+  const [deferredPwaPrompt, setDeferredPwaPrompt] = useState<any>(() => (window as any).__deferredPwaPrompt || null);
   const [showPwaBanner, setShowPwaBanner] = useState(false);
   const [isIosSafari, setIsIosSafari] = useState(false);
+  const pwaDismissedThisVisitRef = React.useRef(false);
 
   // #24 Service worker update toast ("New version available — tap to refresh")
   const [swUpdateAvailable, setSwUpdateAvailable] = useState(false);
@@ -585,39 +605,61 @@ export default function App() {
     };
   }, []);
 
-  // #20, #21, #22 Visit counter & PWA install prompt detection + #24 SW update toast + #83 Maintenance check
+  // Visit counter & PWA install prompt detection (every 2 visits: 2, 4, 6...) + SW update toast
   useEffect(() => {
-    const visits = Number(localStorage.getItem('forkcount_visit_count') || localStorage.getItem('caloriq_visit_count') || '0') + 1;
-    localStorage.setItem('forkcount_visit_count', String(visits));
+    const visits = incrementVisitCountOncePerLoad();
+    const isEvenVisit = visits > 0 && visits % 2 === 0;
 
     const isStandalone =
       window.matchMedia?.('(display-mode: standalone)').matches ||
       (window.navigator as any).standalone === true;
-    const isDismissed = localStorage.getItem('forkcount_pwa_dismissed') === 'true' || localStorage.getItem('caloriq_pwa_dismissed') === 'true';
 
     const ua = window.navigator.userAgent;
     const ios = /iPad|iPhone|iPod/.test(ua) && !(window as any).MSStream;
     const safari = /Safari/.test(ua) && !/CriOS|FxiOS|EdgiOS/.test(ua);
     setIsIosSafari(ios && safari);
 
-    if (!isStandalone && !isDismissed && visits >= 2 && ios && safari) {
+    if ((window as any).__deferredPwaPrompt) {
+      setDeferredPwaPrompt((window as any).__deferredPwaPrompt);
+    }
+
+    if (!isStandalone && isEvenVisit && !pwaDismissedThisVisitRef.current) {
       setShowPwaBanner(true);
     }
 
     const handleBeforeInstall = (e: Event) => {
       e.preventDefault();
+      (window as any).__deferredPwaPrompt = e;
       setDeferredPwaPrompt(e);
-      if (!isStandalone && !isDismissed && visits >= 2) {
+      if (!isStandalone && isEvenVisit && !pwaDismissedThisVisitRef.current) {
         setShowPwaBanner(true);
       }
     };
+
+    const handlePromptReady = (e: Event) => {
+      const detail = (e as CustomEvent).detail || (window as any).__deferredPwaPrompt;
+      if (detail) {
+        setDeferredPwaPrompt(detail);
+      }
+    };
+
+    const handleAppInstalled = () => {
+      (window as any).__deferredPwaPrompt = null;
+      setDeferredPwaPrompt(null);
+      setShowPwaBanner(false);
+    };
+
     window.addEventListener('beforeinstallprompt', handleBeforeInstall);
+    window.addEventListener('forkcount-pwa-prompt-ready', handlePromptReady);
+    window.addEventListener('appinstalled', handleAppInstalled);
 
     const handleSwUpdate = () => setSwUpdateAvailable(true);
     window.addEventListener('forkcount-sw-update', handleSwUpdate);
 
     return () => {
       window.removeEventListener('beforeinstallprompt', handleBeforeInstall);
+      window.removeEventListener('forkcount-pwa-prompt-ready', handlePromptReady);
+      window.removeEventListener('appinstalled', handleAppInstalled);
       window.removeEventListener('forkcount-sw-update', handleSwUpdate);
     };
   }, []);
@@ -694,15 +736,20 @@ export default function App() {
   };
 
   const handleDismissPwaBanner = () => {
+    pwaDismissedThisVisitRef.current = true;
     setShowPwaBanner(false);
-    localStorage.setItem('forkcount_pwa_dismissed', 'true');
   };
 
   const handleTriggerPwaInstall = async () => {
-    if (deferredPwaPrompt) {
-      deferredPwaPrompt.prompt();
-      await deferredPwaPrompt.userChoice.catch(() => {});
+    const promptEvent = deferredPwaPrompt || (window as any).__deferredPwaPrompt;
+    if (promptEvent && typeof promptEvent.prompt === 'function') {
+      await promptEvent.prompt();
+      if (promptEvent.userChoice && typeof promptEvent.userChoice.catch === 'function') {
+        await promptEvent.userChoice.catch(() => {});
+      }
+      (window as any).__deferredPwaPrompt = null;
       setDeferredPwaPrompt(null);
+      pwaDismissedThisVisitRef.current = true;
       setShowPwaBanner(false);
     }
   };
@@ -824,36 +871,55 @@ export default function App() {
         </div>
       )}
 
-      {/* #20, #21, #22 Custom PWA Install Banner (after 2nd visit) */}
+      {/* PWA Install Banner (every 2 visits: 2, 4, 6...) */}
       {showPwaBanner && (
-        <div className="fixed bottom-16 left-1/2 -translate-x-1/2 z-[80] max-w-md w-[94%] bg-zinc-900 border border-teal-500/40 rounded-2xl p-4 shadow-2xl space-y-2.5 no-print">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <h4 className="text-xs font-bold text-zinc-100">Install ForkCount to Home Screen</h4>
-              <p className="text-[11px] text-zinc-300 mt-0.5 leading-relaxed">
-                {isIosSafari
-                  ? 'On iOS Safari: tap the Share button at the bottom of your screen, then choose "Add to Home Screen".'
-                  : 'Install ForkCount for instant offline logging and a clean full-screen experience.'}
+        <div
+          role="region"
+          aria-label="Install ForkCount"
+          className={`fixed ${
+            showStorageBanner ? 'bottom-24 sm:bottom-20' : activeView === 'app' ? 'bottom-16' : 'bottom-4'
+          } left-1/2 -translate-x-1/2 z-[90] max-w-md w-[94%] bg-zinc-900/95 backdrop-blur-md border border-teal-500/40 rounded-2xl p-3.5 shadow-2xl no-print`}
+        >
+          <div className="flex flex-col gap-2.5">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-xs font-semibold text-zinc-100">
+                Install ForkCount for faster access
               </p>
+              {deferredPwaPrompt ? (
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={handleTriggerPwaInstall}
+                    className="px-3.5 py-1.5 bg-teal-500 hover:bg-teal-400 text-zinc-950 font-bold rounded-xl text-xs transition-colors"
+                  >
+                    Install
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleDismissPwaBanner}
+                    className="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-medium rounded-xl text-xs transition-colors"
+                  >
+                    Not now
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleDismissPwaBanner}
+                  className="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-medium rounded-xl text-xs shrink-0 transition-colors"
+                >
+                  Not now
+                </button>
+              )}
             </div>
-            <button
-              type="button"
-              onClick={handleDismissPwaBanner}
-              aria-label="Dismiss install banner"
-              className="text-xs text-zinc-400 hover:text-zinc-200 px-1.5 py-0.5"
-            >
-              Dismiss
-            </button>
+            {!deferredPwaPrompt && (
+              <p className="text-[11px] text-zinc-300 leading-relaxed">
+                {isIosSafari
+                  ? 'Tap the Share button in Safari, then choose "Add to Home Screen".'
+                  : 'Open your browser menu and select "Add to Home Screen" to install ForkCount.'}
+              </p>
+            )}
           </div>
-          {!isIosSafari && deferredPwaPrompt && (
-            <button
-              type="button"
-              onClick={handleTriggerPwaInstall}
-              className="w-full py-2 bg-teal-500 hover:bg-teal-400 text-zinc-950 font-bold rounded-xl text-xs transition-colors"
-            >
-              Install App
-            </button>
-          )}
         </div>
       )}
 
