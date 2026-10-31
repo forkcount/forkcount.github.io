@@ -2820,6 +2820,39 @@ class ApiService {
     };
   }
 
+  async spellcheckVictory(
+    text: string,
+    rejectedWords: string[] = [],
+    signal?: AbortSignal
+  ): Promise<string | null> {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 6500);
+      if (signal) {
+        if (signal.aborted) {
+          clearTimeout(timeoutId);
+          return null;
+        }
+        signal.addEventListener('abort', () => controller.abort(), { once: true });
+      }
+      try {
+        const res = await fetch('/api/ai/spellcheck', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text, rejectedWords }),
+          signal: controller.signal
+        });
+        if (!res.ok) return null;
+        const data = await res.json();
+        return typeof data?.correctedText === 'string' ? data.correctedText : null;
+      } finally {
+        clearTimeout(timeoutId);
+      }
+    } catch {
+      return null;
+    }
+  }
+
   async scanMenu(
     images: Array<{ base64Image: string; mimeType?: string }>,
     userGoal: string = 'Maintain',

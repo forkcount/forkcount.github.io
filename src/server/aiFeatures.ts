@@ -1,4 +1,4 @@
-import { GoogleGenAI, Type } from '@google/genai';
+import { GoogleGenAI, ThinkingLevel, Type } from '@google/genai';
 import { decipherFoodText } from '../utils/localAiEngine.js';
 import { formatLocalDate } from '../utils/dateUtils.js';
 
@@ -1394,3 +1394,69 @@ For each dish:
     return { dishes: fallbackDishes };
   }
 }
+
+export async function spellcheckVictoryWithGemini(
+  text: string,
+  rejectedWords: string[] = []
+): Promise<{ correctedText: string }> {
+  if (typeof text !== 'string') {
+    return { correctedText: '' };
+  }
+  const trimmed = text.trim();
+  if (!trimmed || text.length > 500) {
+    return { correctedText: text };
+  }
+  const words = trimmed.split(/\s+/).filter(Boolean);
+  if (words.length <= 2) {
+    return { correctedText: text };
+  }
+
+  const ai = getAiClient();
+  const prompt = `Correct any spelling mistakes in the following text. Do not change grammar, tone, phrasing, or word choice unless it's an obvious misspelling. Leave uppercase acronyms and fitness codes (like C25K, PR, HIIT, 5k) unchanged. Only fix words that are misspelled. Return only the corrected text, nothing else.
+
+Text: ${trimmed}`;
+
+  const runModel = async (modelName: string) => {
+    const timeoutPromise = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('Spellcheck timed out')), 6000)
+    );
+    const genPromise = ai.models.generateContent({
+      model: modelName,
+      contents: prompt,
+      config: {
+        temperature: 0,
+        thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL }
+      }
+    });
+    return await Promise.race([genPromise, timeoutPromise]);
+  };
+
+  let response;
+  try {
+    response = await runModel('gemini-3.1-flash-lite');
+  } catch {
+    response = await runModel('gemini-3-flash-preview');
+  }
+
+  let cleaned = (response.text ?? '').trim();
+  if (!cleaned) {
+    return { correctedText: text };
+  }
+  cleaned = cleaned.replace(/^Text:\s*/i, '').trim();
+  if (
+    !trimmed.startsWith('"') &&
+    cleaned.startsWith('"') &&
+    cleaned.endsWith('"') &&
+    cleaned.length >= 2
+  ) {
+    cleaned = cleaned.slice(1, -1).trim();
+  }
+  if (!cleaned || Math.abs(cleaned.length - trimmed.length) > Math.max(30, Math.ceil(trimmed.length * 0.6))) {
+    return { correctedText: text };
+  }
+
+  const leadingWs = text.match(/^\s*/)?.[0] || '';
+  const trailingWs = text.match(/\s*$/)?.[0] || '';
+  return { correctedText: `${leadingWs}${cleaned}${trailingWs}` };
+}
+

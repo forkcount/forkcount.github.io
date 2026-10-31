@@ -131,7 +131,8 @@
       "isGuest": false,
       "createdAt": 1791050885376,
       "lastLoginAt": 1791050885376,
-      "trustedDevices": []
+      "trustedDevices": [],
+      "isDev": false
     },
     "usr_test_1791050947500": {
       "id": "usr_test_1791050947500",
@@ -139,7 +140,8 @@
       "isGuest": false,
       "createdAt": 1791050948795,
       "lastLoginAt": 1791050948795,
-      "trustedDevices": []
+      "trustedDevices": [],
+      "isDev": false
     },
     "usr_test_1791051021884": {
       "id": "usr_test_1791051021884",
@@ -147,7 +149,8 @@
       "isGuest": false,
       "createdAt": 1791051023144,
       "lastLoginAt": 1791051023144,
-      "trustedDevices": []
+      "trustedDevices": [],
+      "isDev": false
     },
     "usr_test_1791051046893": {
       "id": "usr_test_1791051046893",
@@ -155,7 +158,8 @@
       "isGuest": false,
       "createdAt": 1791051048151,
       "lastLoginAt": 1791051048151,
-      "trustedDevices": []
+      "trustedDevices": [],
+      "isDev": false
     }
   },
   "profiles": {
@@ -1129,7 +1133,16 @@
       }
     }
   ],
-  "recentErrors": [],
+  "recentErrors": [
+    {
+      "id": "err_00963760-2863-4bec-a4cc-1485346b52e4",
+      "timestamp": "2026-10-28T07:16:54.529Z",
+      "createdAt": 1793171814529,
+      "endpoint": "/api/ai/spellcheck",
+      "errorMessage": "Spellcheck timed out",
+      "userEmail": ""
+    }
+  ],
   "settings": {
     "id": "global"
   }

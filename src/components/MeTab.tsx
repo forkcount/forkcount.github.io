@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Scale,
   Award,
@@ -72,6 +72,13 @@ import {
   validateDateRange
 } from '../utils/validation.js';
 import { formatLocalDate, addDaysLocal } from '../utils/dateUtils.js';
+import {
+  shouldRunVictorySpellcheck,
+  applySpellcheckWithOverrides,
+  evaluateUserEditAgainstFixes,
+  getRejectedWordsSnapshot,
+  type AppliedCorrection
+} from '../utils/victorySpellcheck.js';
 import type { SupportedLanguage } from '../utils/i18n.js';
 import type { UserProfile, CommunityPost, ReportedPostRecord } from '../types/index.js';
 
@@ -276,8 +283,20 @@ export const MeTab: React.FC<MeTabProps> = ({
   } | null>(null);
   const [showBmrExplainWhy, setShowBmrExplainWhy] = useState(false);
 
-  // Non-scale victories (#41)
+  // Non-scale victories (#41) + AI spellcheck with human override
   const [newVictory, setNewVictory] = useState('');
+  const [victoryOriginalBeforeAi, setVictoryOriginalBeforeAi] = useState<string | null>(null);
+  const [showVictoryAiHint, setShowVictoryAiHint] = useState(false);
+  const currentVictoryTextRef = useRef('');
+  const victoryOriginalBeforeAiRef = useRef<string | null>(null);
+  const activeVictoryFixesRef = useRef<AppliedCorrection[]>([]);
+  const lastSpellcheckedTextRef = useRef<string>('');
+  const lastCorrectedWordCountRef = useRef<number>(0);
+  const hasCompletedPassRef = useRef<boolean>(false);
+  const spellcheckDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const spellcheckAbortRef = useRef<AbortController | null>(null);
+  const spellcheckSeqRef = useRef<number>(0);
+  const skipNextVictoryBlurRef = useRef<boolean>(false);
 
   // Email change flow state
   const [showEmailChange, setShowEmailChange] = useState(false);
@@ -397,11 +416,177 @@ export const MeTab: React.FC<MeTabProps> = ({
     await updateUserProfile({ themeMode: mode });
   };
 
+  const cancelPendingVictorySpellcheck = () => {
+    if (spellcheckDebounceRef.current) {
+      clearTimeout(spellcheckDebounceRef.current);
+      spellcheckDebounceRef.current = null;
+    }
+    if (spellcheckAbortRef.current) {
+      spellcheckAbortRef.current.abort();
+      spellcheckAbortRef.current = null;
+    }
+    spellcheckSeqRef.current += 1;
+  };
+
+  const resetVictorySpellcheckState = () => {
+    cancelPendingVictorySpellcheck();
+    currentVictoryTextRef.current = '';
+    victoryOriginalBeforeAiRef.current = null;
+    activeVictoryFixesRef.current = [];
+    lastSpellcheckedTextRef.current = '';
+    lastCorrectedWordCountRef.current = 0;
+    hasCompletedPassRef.current = false;
+    setVictoryOriginalBeforeAi(null);
+    setShowVictoryAiHint(false);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (spellcheckDebounceRef.current) {
+        clearTimeout(spellcheckDebounceRef.current);
+      }
+      if (spellcheckAbortRef.current) {
+        spellcheckAbortRef.current.abort();
+      }
+    };
+  }, []);
+
+  const runVictorySpellcheck = async (textToCheck: string) => {
+    if (!shouldRunVictorySpellcheck(textToCheck)) return;
+    if (textToCheck === lastSpellcheckedTextRef.current) return;
+
+    const wordCount = textToCheck.trim().split(/\s+/).filter(Boolean).length;
+    if (hasCompletedPassRef.current && wordCount <= lastCorrectedWordCountRef.current) {
+      return;
+    }
+
+    if (spellcheckAbortRef.current) {
+      spellcheckAbortRef.current.abort();
+    }
+    const controller = new AbortController();
+    spellcheckAbortRef.current = controller;
+    const seq = ++spellcheckSeqRef.current;
+    lastSpellcheckedTextRef.current = textToCheck;
+
+    const aiSuggestion = await api.spellcheckVictory(
+      textToCheck,
+      getRejectedWordsSnapshot(),
+      controller.signal
+    );
+
+    if (
+      seq !== spellcheckSeqRef.current ||
+      controller.signal.aborted ||
+      currentVictoryTextRef.current !== textToCheck
+    ) {
+      return;
+    }
+
+    if (!aiSuggestion) return;
+
+    const applied = applySpellcheckWithOverrides(textToCheck, aiSuggestion);
+    const nextWordCount = applied.finalText.trim().split(/\s+/).filter(Boolean).length;
+    lastCorrectedWordCountRef.current = nextWordCount;
+
+    if (!applied.changed) {
+      return;
+    }
+
+    hasCompletedPassRef.current = true;
+    if (victoryOriginalBeforeAiRef.current === null) {
+      victoryOriginalBeforeAiRef.current = textToCheck;
+      setVictoryOriginalBeforeAi(textToCheck);
+    }
+
+    const mergedFixes = [...activeVictoryFixesRef.current];
+    for (const fix of applied.appliedFixes) {
+      if (!mergedFixes.some((existing) => existing.originalLower === fix.originalLower)) {
+        mergedFixes.push(fix);
+      }
+    }
+    activeVictoryFixesRef.current = mergedFixes;
+    lastSpellcheckedTextRef.current = applied.finalText;
+    currentVictoryTextRef.current = applied.finalText;
+    setNewVictory(applied.finalText);
+    setShowVictoryAiHint(true);
+  };
+
+  const handleVictoryInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    currentVictoryTextRef.current = val;
+    setNewVictory(val);
+
+    if (spellcheckDebounceRef.current) {
+      clearTimeout(spellcheckDebounceRef.current);
+      spellcheckDebounceRef.current = null;
+    }
+    if (spellcheckAbortRef.current) {
+      spellcheckAbortRef.current.abort();
+      spellcheckAbortRef.current = null;
+    }
+
+    if (!val.trim()) {
+      resetVictorySpellcheckState();
+      return;
+    }
+
+    if (activeVictoryFixesRef.current.length > 0) {
+      const { shouldHideHint } = evaluateUserEditAgainstFixes(
+        val,
+        activeVictoryFixesRef.current,
+        victoryOriginalBeforeAiRef.current
+      );
+      if (shouldHideHint) {
+        setShowVictoryAiHint(false);
+      }
+    }
+
+    const wordCount = val.trim().split(/\s+/).filter(Boolean).length;
+    if (hasCompletedPassRef.current && wordCount <= lastCorrectedWordCountRef.current) {
+      return;
+    }
+
+    if (shouldRunVictorySpellcheck(val)) {
+      spellcheckDebounceRef.current = setTimeout(() => {
+        spellcheckDebounceRef.current = null;
+        void runVictorySpellcheck(val);
+      }, 800);
+    }
+  };
+
+  const handleVictoryInputBlur = () => {
+    if (skipNextVictoryBlurRef.current) {
+      skipNextVictoryBlurRef.current = false;
+      return;
+    }
+    if (spellcheckDebounceRef.current) {
+      clearTimeout(spellcheckDebounceRef.current);
+      spellcheckDebounceRef.current = null;
+    }
+    const val = currentVictoryTextRef.current;
+    if (shouldRunVictorySpellcheck(val)) {
+      void runVictorySpellcheck(val);
+    }
+  };
+
   const handleAddVictory = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newVictory.trim()) return;
-    await addVictoryItem(newVictory.trim());
+    skipNextVictoryBlurRef.current = false;
+    const finalText = newVictory.trim();
+    if (!finalText) {
+      resetVictorySpellcheckState();
+      return;
+    }
+    if (activeVictoryFixesRef.current.length > 0) {
+      evaluateUserEditAgainstFixes(
+        newVictory,
+        activeVictoryFixesRef.current,
+        victoryOriginalBeforeAiRef.current
+      );
+    }
+    resetVictorySpellcheckState();
     setNewVictory('');
+    await addVictoryItem(finalText);
   };
 
   const handleSaveProfile = async (e: React.FormEvent) => {
@@ -1355,21 +1540,34 @@ export const MeTab: React.FC<MeTabProps> = ({
           <span className="text-[11px] font-mono text-zinc-500">{(victories || []).length} wins</span>
         </div>
 
-        <form onSubmit={handleAddVictory} className="flex gap-2">
-          <input
-            type="text"
-            value={newVictory}
-            onChange={(e) => setNewVictory(e.target.value)}
-            placeholder="e.g. Jeans fit better, ran 5k without stopping..."
-            className="flex-1 bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-teal-500"
-          />
-          <button
-            type="submit"
-            className="px-3 py-2 bg-teal-500 hover:bg-teal-400 text-zinc-950 font-semibold text-xs rounded-xl flex items-center gap-1 transition-colors shrink-0"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            Add Win
-          </button>
+        <form onSubmit={handleAddVictory} className="space-y-1.5">
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={newVictory}
+              data-original-text={victoryOriginalBeforeAi ?? undefined}
+              onChange={handleVictoryInputChange}
+              onBlur={handleVictoryInputBlur}
+              placeholder="Add Win"
+              className="flex-1 bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-teal-500"
+            />
+            <button
+              type="submit"
+              onMouseDown={() => {
+                skipNextVictoryBlurRef.current = true;
+              }}
+              className="px-3 py-2 bg-teal-500 hover:bg-teal-400 text-zinc-950 font-semibold text-xs rounded-xl flex items-center gap-1 transition-colors shrink-0"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              Add Win
+            </button>
+          </div>
+          {showVictoryAiHint && (
+            <div className="flex items-center gap-1 px-1 text-[11px] text-teal-400/90">
+              <Sparkles className="w-3 h-3 shrink-0" />
+              <span>AI corrected</span>
+            </div>
+          )}
         </form>
 
         {(victories || []).length === 0 ? (

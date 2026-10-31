@@ -171,7 +171,8 @@ import {
   rateExerciseWithGemini,
   recommendDailyWorkoutWithGemini,
   generateCoachSuggestionWithGemini,
-  scanMenuWithGemini
+  scanMenuWithGemini,
+  spellcheckVictoryWithGemini
 } from './src/server/aiFeatures.js';
 
 dotenv.config({ path: ['.env.local', '.env'], quiet: true });
@@ -2452,6 +2453,23 @@ app.post('/api/ai/scan-menu', async (req, res) => {
     res.json(result);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/ai/spellcheck', async (req, res) => {
+  try {
+    const text = typeof req.body?.text === 'string' ? req.body.text : '';
+    const rejectedWords = Array.isArray(req.body?.rejectedWords)
+      ? req.body.rejectedWords.filter((w: unknown): w is string => typeof w === 'string')
+      : [];
+    if (!text.trim() || text.length > 500 || text.trim().split(/\s+/).filter(Boolean).length <= 2) {
+      res.json({ correctedText: text });
+      return;
+    }
+    const result = await spellcheckVictoryWithGemini(text, rejectedWords);
+    res.json(result);
+  } catch (err: any) {
+    res.status(502).json({ error: err?.message || 'Spellcheck failed' });
   }
 });
 
