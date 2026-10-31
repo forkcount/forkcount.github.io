@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { ArrowLeft, Check, Copy, Download, HelpCircle, Mail, Shield, AlertTriangle, RefreshCw } from 'lucide-react';
 import { api } from '../services/api.js';
 import { LegalFooter } from './LegalFooter.js';
+import { ForkCountLogo } from './ForkCountLogo.js';
 
 interface PageNavProps {
   onBack?: () => void;
@@ -76,7 +77,10 @@ export const FaqPage: React.FC<PageNavProps> = ({
             <ArrowLeft className="w-4 h-4 text-teal-400" />
             <span>Back</span>
           </button>
-          <span className="text-sm font-semibold text-zinc-100">ForkCount FAQ</span>
+          <span className="inline-flex items-center gap-2 text-sm font-semibold text-zinc-100">
+            <ForkCountLogo className="size-5 shrink-0" />
+            <span>ForkCount FAQ</span>
+          </span>
         </div>
 
         <main id="main-faq" className="space-y-4">
@@ -182,7 +186,10 @@ export const ContactPage: React.FC<PageNavProps> = ({
             <ArrowLeft className="w-4 h-4 text-teal-400" />
             <span>Back</span>
           </button>
-          <span className="text-sm font-semibold text-zinc-100">Contact ForkCount</span>
+          <span className="inline-flex items-center gap-2 text-sm font-semibold text-zinc-100">
+            <ForkCountLogo className="size-5 shrink-0" />
+            <span>Contact ForkCount</span>
+          </span>
         </div>
 
         <main id="main-contact" className="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-6 sm:p-8 space-y-6">
@@ -356,7 +363,10 @@ export const PressPage: React.FC<PageNavProps> = ({
             <ArrowLeft className="w-4 h-4 text-teal-400" />
             <span>Back</span>
           </button>
-          <span className="text-sm font-semibold text-zinc-100">ForkCount Press Kit</span>
+          <span className="inline-flex items-center gap-2 text-sm font-semibold text-zinc-100">
+            <ForkCountLogo className="size-5 shrink-0" />
+            <span>ForkCount Press Kit</span>
+          </span>
         </div>
 
         <main id="main-press" className="space-y-6">

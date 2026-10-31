@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '../context/AppContext.js';
 import { DevToolsSheet } from './DevToolsSheet.js';
+import { ForkCountLogo } from './ForkCountLogo.js';
 import { t } from '../utils/i18n.js';
 import { getDateBounds } from '../utils/validation.js';
 import { formatLocalDate, parseLocalDate, addDaysLocal } from '../utils/dateUtils.js';
@@ -141,7 +142,7 @@ export const Navigation: React.FC<NavigationProps> = ({ currentTab, onTabChange,
               aria-label="View ForkCount description and overview"
               className="font-bold text-base tracking-tight text-zinc-100 flex items-center gap-1.5 hover:text-teal-400 transition-colors cursor-pointer"
             >
-              <span className="w-2 h-2 rounded-full bg-teal-400 inline-block"></span>
+              <ForkCountLogo className="size-5 shrink-0" />
               <span>ForkCount</span>
             </button>
             {/* #19 Auto-save indicator dot */}

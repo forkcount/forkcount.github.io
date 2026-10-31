@@ -1,6 +1,7 @@
 import React from 'react';
 import { ArrowLeft, FileText } from 'lucide-react';
 import { LegalFooter } from './LegalFooter.js';
+import { ForkCountLogo } from './ForkCountLogo.js';
 
 interface TermsOfServicePageProps {
   onBackToLanding: () => void;
@@ -19,7 +20,7 @@ export const TermsOfServicePage: React.FC<TermsOfServicePageProps> = ({
       <header className="sticky top-0 z-40 bg-zinc-950/90 backdrop-blur-md border-b border-zinc-850 px-5 py-4">
         <div className="max-w-3xl mx-auto flex items-center justify-between gap-4">
           <div className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-teal-400 inline-block" aria-hidden="true" />
+            <ForkCountLogo className="size-6 shrink-0" />
             <span className="font-bold text-lg tracking-tight text-zinc-100">ForkCount</span>
           </div>
 

@@ -19,6 +19,7 @@ import {
   Sparkles,
   Smartphone
 } from 'lucide-react';
+import { ForkCountLogo } from './ForkCountLogo.js';
 
 interface DescriptionPageProps {
   onOpenApp: (initialAction?: 'guest' | 'login' | 'program' | 'demo', programSlug?: string) => void;
@@ -267,9 +268,7 @@ export function DescriptionPage({
         {/* Navigation Header */}
         <header className="flex items-center justify-between py-6">
           <div className="flex items-center gap-2.5">
-            <span className="flex size-7 items-center justify-center rounded-full border border-teal-500/30 bg-teal-500/10 text-[12px] font-semibold text-teal-400">
-              F
-            </span>
+            <ForkCountLogo className="size-7 shrink-0" />
             <span className="font-display text-xl font-semibold tracking-tight text-zinc-100">
               ForkCount
             </span>
@@ -823,9 +822,7 @@ export function DescriptionPage({
         <footer className="border-t border-zinc-800/70 py-8 text-xs text-zinc-400 space-y-3">
           <div className="flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
             <div className="flex items-center gap-2.5">
-              <span className="flex size-6 items-center justify-center rounded-full border border-teal-500/30 bg-teal-500/10 text-[10px] font-semibold text-teal-400">
-                F
-              </span>
+              <ForkCountLogo className="size-6 shrink-0" />
               <span className="text-zinc-300">&copy; {new Date().getFullYear()} ForkCount — calorie and macro tracking.</span>
             </div>
 
